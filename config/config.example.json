@@ -1,0 +1,12 @@
+{
+  "bot_token": "8086792579:AAF29k5VXfWb4_n0tJAbKE6HoDhNl8TQOpk",
+  "database_path": "data/bot.db",
+  "admin_ids": [327294302,7555257236,1473282856,5340385875,7482807557],
+  "allowed_chats": [-1002276571496],
+  "_comment": {
+    "bot_token": "从 @BotFather 获取的 Bot Token",
+    "database_path": "SQLite 数据库文件路径",
+    "admin_ids": "管理员 Telegram ID 列表，可以使用 @userinfobot 获取",
+    "allowed_chats": "允许使用的群组 ID 列表，为空则不限制"
+  }
+}

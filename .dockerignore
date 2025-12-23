@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+
+# Data
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Config (mount at runtime)
+config/config.json
+
+# Tests
+tests/
+
+# Docs
+*.md
+!README.md
+
+# Kiro specs
+.kiro/

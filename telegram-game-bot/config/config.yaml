@@ -1,0 +1,39 @@
+# Telegram Game Bot Configuration
+
+bot:
+  # Bot token from @BotFather (use BOT_TOKEN env var in production)
+  token: ""
+
+database:
+  host: localhost
+  port: 5432
+  user: gamebot
+  password: ""  # Use DATABASE_PASSWORD env var in production
+  name: gamebot
+  pool_size: 20
+  connect_timeout: 10s
+  max_conn_lifetime: 1h
+  max_conn_idle_time: 30m
+
+admin:
+  # Telegram user IDs with admin privileges
+  ids: []
+
+whitelist:
+  # Chat IDs where bot is allowed to operate
+  # Empty list means all chats are allowed
+  chats: []
+
+daily:
+  reward: 500
+  cooldown_hours: 24
+
+games:
+  dice:
+    max_bet: 1000
+    cooldown_seconds: 3
+  slot:
+    cooldown_seconds: 5
+  sicbo:
+    betting_duration_seconds: 60
+    fixed_bet_amount: 100
