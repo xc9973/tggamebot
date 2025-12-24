@@ -178,27 +178,36 @@ func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
 	return markup
 }
 
-// FormatPanelMessage formats the betting panel message.
+// FormatPanelMessage formats the betting panel message with odds and probabilities.
 func FormatPanelMessage(remainingTime int, playerCount int, totalBetAmount int64) string {
 	msg := "🎲 骰宝 - 下注中\n"
+	msg += "━━━━━━━━━━━━━━━\n"
 	msg += fmt.Sprintf("⏰ 剩余 %d 秒 | 👥 %d 人 | 💰 %d\n", remainingTime, playerCount, totalBetAmount)
-	msg += "\n"
-	msg += fmt.Sprintf("点击按钮下注 (每次 %d 金币)", FixedBetAmount)
+	msg += "━━━━━━━━━━━━━━━\n"
+	msg += "📊 赔率说明:\n"
+	msg += "• 押大/小: 1:1 (48.6%)\n"
+	msg += "• 押单数: 1出现1次=1:1, 2次=2:1, 3次=3:1\n"
+	msg += "  (单数出现概率: 42.1%)\n"
+	msg += "━━━━━━━━━━━━━━━\n"
+	msg += fmt.Sprintf("💰 每次下注: %d 金币", FixedBetAmount)
 	return msg
 }
 
 // FormatSettlementMessage formats the settlement result message.
 func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) string {
-	diceStr := fmt.Sprintf("🎲%d 🎲%d 🎲%d", dice[0], dice[1], dice[2])
 	total := dice[0] + dice[1] + dice[2]
 	isTriple := IsTriple(dice)
 
-	msg := "🎰 骰宝结算\n"
+	// Header
+	msg := "🎰 骰宝开奖结果\n"
 	msg += "━━━━━━━━━━━━━━━\n"
-	msg += fmt.Sprintf("骰子: %s = %d", diceStr, total)
+	
+	// Dice display
+	msg += fmt.Sprintf("🎲 %d  🎲 %d  🎲 %d\n", dice[0], dice[1], dice[2])
+	msg += fmt.Sprintf("📊 点数: %d", total)
 
 	if isTriple {
-		msg += " (围骰)\n"
+		msg += " 🔥围骰🔥\n"
 	} else if total >= 11 {
 		msg += " (大)\n"
 	} else {
@@ -208,30 +217,71 @@ func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) 
 	msg += "━━━━━━━━━━━━━━━\n"
 
 	if len(playerResults) == 0 {
-		msg += "本局无人下注\n"
-	} else {
-		for _, result := range playerResults {
-			net := result.TotalPayout
-			displayName := result.Username
-			if displayName == "" {
-				displayName = fmt.Sprintf("%d", result.UserID)
-			}
-			if !strings.HasPrefix(displayName, "@") {
-				displayName = "@" + displayName
-			}
+		msg += "😴 本局无人下注\n"
+		msg += "━━━━━━━━━━━━━━━"
+		return msg
+	}
 
-			if net > 0 {
-				msg += fmt.Sprintf("🎉 %s +%d\n", displayName, net)
-			} else if net < 0 {
-				msg += fmt.Sprintf("😢 %s %d\n", displayName, net)
-			} else {
-				msg += fmt.Sprintf("😐 %s ±0\n", displayName)
+	// Find top winner
+	var topWinner PlayerResult
+	var hasWinner bool
+	var totalWinners, totalLosers int
+	var totalWinAmount, totalLoseAmount int64
+
+	for _, result := range playerResults {
+		if result.TotalPayout > 0 {
+			totalWinners++
+			totalWinAmount += result.TotalPayout
+			if result.TotalPayout > topWinner.TotalPayout {
+				topWinner = result
+				hasWinner = true
 			}
+		} else if result.TotalPayout < 0 {
+			totalLosers++
+			totalLoseAmount += -result.TotalPayout
 		}
 	}
 
+	// Show top winner
+	if hasWinner {
+		displayName := topWinner.Username
+		if displayName == "" {
+			displayName = fmt.Sprintf("%d", topWinner.UserID)
+		}
+		if !strings.HasPrefix(displayName, "@") {
+			displayName = "@" + displayName
+		}
+		msg += fmt.Sprintf("🏆 最高赢家: %s +%d\n", displayName, topWinner.TotalPayout)
+		msg += "━━━━━━━━━━━━━━━\n"
+	}
+
+	// Summary
+	msg += fmt.Sprintf("📈 赢家: %d人 (+%d)\n", totalWinners, totalWinAmount)
+	msg += fmt.Sprintf("📉 输家: %d人 (-%d)\n", totalLosers, totalLoseAmount)
 	msg += "━━━━━━━━━━━━━━━\n"
-	msg += "游戏结束"
+
+	// Player results
+	msg += "📋 玩家结算:\n"
+	for _, result := range playerResults {
+		net := result.TotalPayout
+		displayName := result.Username
+		if displayName == "" {
+			displayName = fmt.Sprintf("%d", result.UserID)
+		}
+		if !strings.HasPrefix(displayName, "@") {
+			displayName = "@" + displayName
+		}
+
+		if net > 0 {
+			msg += fmt.Sprintf("  🎉 %s +%d\n", displayName, net)
+		} else if net < 0 {
+			msg += fmt.Sprintf("  💔 %s %d\n", displayName, net)
+		} else {
+			msg += fmt.Sprintf("  😐 %s ±0\n", displayName)
+		}
+	}
+
+	msg += "━━━━━━━━━━━━━━━"
 
 	return msg
 }
