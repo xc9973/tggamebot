@@ -457,6 +457,17 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 
 	// Start new session with starter ID
 	duration := h.cfg.Games.SicBo.BettingDurationSeconds
+	if duration <= 0 {
+		duration = 60 // Default to 60 seconds if not configured
+		log.Warn().Msg("SicBo betting duration not configured, using default 60 seconds")
+	}
+
+	log.Info().
+		Int64("chat_id", chat.ID).
+		Int64("starter_id", sender.ID).
+		Int("duration", duration).
+		Msg("Starting SicBo session")
+
 	err := h.sicboGame.StartSession(ctx, chat.ID, sender.ID, duration)
 	if err != nil {
 		if errors.Is(err, sicbo.ErrSessionExists) {
@@ -491,15 +502,26 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 
 // scheduleSicBoSettle schedules automatic settlement after betting phase ends.
 func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int, bot *tele.Bot) {
-	// Wait until 3 seconds before end time
-	waitTime := durationSecs - 3
-	if waitTime < 0 {
-		waitTime = 0
+	// Ensure minimum duration to prevent immediate settlement
+	if durationSecs < 10 {
+		durationSecs = 60 // Default to 60 seconds if invalid
+		log.Warn().Int64("chat_id", chatID).Msg("Invalid betting duration, using default 60 seconds")
 	}
+
+	// Wait until 3 seconds before end time (for dice animation)
+	waitTime := durationSecs - 3
+	
+	log.Info().
+		Int64("chat_id", chatID).
+		Int("duration_secs", durationSecs).
+		Int("wait_time", waitTime).
+		Msg("Scheduling SicBo auto-settle")
+
 	time.Sleep(time.Duration(waitTime) * time.Second)
 
 	// Check if session still exists (might have been manually settled)
 	if !h.sicboGame.IsSessionActive(chatID) {
+		log.Debug().Int64("chat_id", chatID).Msg("Session already settled, skipping auto-settle")
 		return
 	}
 
@@ -646,20 +668,32 @@ func (h *GameHandler) settleSicBo(ctx context.Context, chatID int64, bot *tele.B
 		}
 
 		// Update user balance
-		if netPayout != 0 {
+		// Note: Bet amount was already deducted when placing the bet
+		// netPayout is the net result: positive = win, negative = loss
+		// For wins: we need to credit (bet + winnings) = totalBet + netPayout
+		// For losses: netPayout is negative, but bet was already deducted, so we don't deduct again
+		// 
+		// Example: User bets 100 on "big", dice shows 12 (big wins)
+		//   - At bet time: -100 deducted
+		//   - netPayout = +100 (1:1 payout)
+		//   - Credit amount = totalBet + netPayout = 100 + 100 = 200
+		//   - Final: -100 + 200 = +100 net gain ✓
+		//
+		// Example: User bets 100 on "big", dice shows 8 (big loses)
+		//   - At bet time: -100 deducted
+		//   - netPayout = -100 (loss)
+		//   - Since netPayout < 0, we don't credit anything (bet already lost)
+		//   - Final: -100 net loss ✓
+		
+		if netPayout > 0 {
+			// User won - credit bet amount + winnings
+			creditAmount := totalBet + netPayout
 			h.userLock.Lock(userID)
-			var desc string
-			var txType string
-			if netPayout > 0 {
-				desc = fmt.Sprintf("骰宝赢得 %d", netPayout)
-				txType = model.TxTypeSicBoWin
-			} else {
-				desc = fmt.Sprintf("骰宝输了 %d", -netPayout)
-				txType = model.TxTypeSicBoBet
-			}
-			h.accountService.UpdateBalance(ctx, userID, netPayout, txType, &desc)
+			desc := fmt.Sprintf("骰宝赢得 %d (本金 %d + 盈利 %d)", creditAmount, totalBet, netPayout)
+			h.accountService.UpdateBalance(ctx, userID, creditAmount, model.TxTypeSicBoWin, &desc)
 			h.userLock.Unlock(userID)
 		}
+		// If netPayout <= 0, user lost - bet was already deducted, nothing more to do
 	}
 
 	// Format and send settlement message
