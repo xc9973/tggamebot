@@ -265,20 +265,20 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 	// Get new balance
 	newBalance, _ := h.accountService.GetBalance(ctx, sender.ID)
 
-	// Build result message
+	// Build result message with @username
 	var resultMsg string
 	switch {
 	case payout > bet:
-		resultMsg = fmt.Sprintf("🎲🎲 %d + %d = %d\n🎊 JACKPOT! 赢得 %d 金币！\n💰 余额: %d", dice1Val, dice2Val, total, payout, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n🎊 JACKPOT! 赢得 %d 金币！\n💰 余额: %d", username, dice1Val, dice2Val, total, payout, newBalance)
 	case payout > 0:
-		resultMsg = fmt.Sprintf("🎲🎲 %d + %d = %d\n🎉 赢得 %d 金币！\n💰 余额: %d", dice1Val, dice2Val, total, payout, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n🎉 赢得 %d 金币！\n💰 余额: %d", username, dice1Val, dice2Val, total, payout, newBalance)
 	case payout == 0:
-		resultMsg = fmt.Sprintf("🎲🎲 %d + %d = %d\n😐 平局，返还下注\n💰 余额: %d", dice1Val, dice2Val, total, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n😐 平局，返还下注\n💰 余额: %d", username, dice1Val, dice2Val, total, newBalance)
 	default:
-		resultMsg = fmt.Sprintf("🎲🎲 %d + %d = %d\n😢 输了 %d 金币\n💰 余额: %d", dice1Val, dice2Val, total, bet, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n😢 输了 %d 金币\n💰 余额: %d", username, dice1Val, dice2Val, total, bet, newBalance)
 	}
 
-	replyMsg, err := c.Bot().Reply(c.Message(), resultMsg)
+	replyMsg, err := c.Bot().Send(c.Chat(), resultMsg)
 	if err == nil && replyMsg != nil {
 		h.trackMessage(c.Chat().ID, replyMsg.ID)
 	}
@@ -385,21 +385,21 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 	// Get new balance
 	newBalance, _ := h.accountService.GetBalance(ctx, sender.ID)
 
-	// Build result message
+	// Build result message with @username
 	symbols := []string{slot.SymbolNames[left], slot.SymbolNames[middle], slot.SymbolNames[right]}
 	slotDisplay := strings.Join(symbols, " ")
 
 	var resultMsg string
 	switch {
 	case payout > 0:
-		resultMsg = fmt.Sprintf("🎰 %s\n🎊 三连！赢得 %d 金币！\n💰 余额: %d", slotDisplay, payout, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎰 %s\n🎊 三连！赢得 %d 金币！\n💰 余额: %d", username, slotDisplay, payout, newBalance)
 	case payout == 0:
-		resultMsg = fmt.Sprintf("🎰 %s\n😐 两连，返还下注\n💰 余额: %d", slotDisplay, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎰 %s\n😐 两连，返还下注\n💰 余额: %d", username, slotDisplay, newBalance)
 	default:
-		resultMsg = fmt.Sprintf("🎰 %s\n😢 没中，输了 %d 金币\n💰 余额: %d", slotDisplay, bet, newBalance)
+		resultMsg = fmt.Sprintf("@%s 🎰 %s\n😢 没中，输了 %d 金币\n💰 余额: %d", username, slotDisplay, bet, newBalance)
 	}
 
-	replyMsg, err := c.Bot().Reply(c.Message(), resultMsg)
+	replyMsg, err := c.Bot().Send(c.Chat(), resultMsg)
 	if err == nil && replyMsg != nil {
 		h.trackMessage(c.Chat().ID, replyMsg.ID)
 	}
