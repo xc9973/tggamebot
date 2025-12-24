@@ -35,6 +35,11 @@ func EncodeCallback(action string, param string) string {
 
 // DecodeCallback decodes callback data into action and parameter.
 func DecodeCallback(data string) (action string, param string) {
+	// Telebot v3 may add a \f prefix to callback data
+	if strings.HasPrefix(data, "\f") {
+		data = strings.TrimPrefix(data, "\f")
+	}
+	
 	if !strings.HasPrefix(data, CallbackPrefix) {
 		return "", ""
 	}
@@ -200,12 +205,19 @@ func FormatPanelMessage(remainingTime int, playerCount int, totalBetAmount int64
 }
 
 // FormatSettlementMessage formats the settlement result message.
-func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) string {
+func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult, starterUsername string) string {
 	total := dice[0] + dice[1] + dice[2]
 	isTriple := IsTriple(dice)
 
-	// Header
-	msg := "🎰 骰宝开奖\n\n"
+	// Header with starter info
+	msg := "🎰 骰宝开奖\n"
+	if starterUsername != "" {
+		if !strings.HasPrefix(starterUsername, "@") {
+			starterUsername = "@" + starterUsername
+		}
+		msg += fmt.Sprintf("🎯 发起者: %s\n", starterUsername)
+	}
+	msg += "\n"
 	
 	// Dice display
 	msg += fmt.Sprintf("🎲 %d   🎲 %d   🎲 %d\n", dice[0], dice[1], dice[2])

@@ -25,13 +25,23 @@ import (
 )
 
 const (
-	// HighBalanceThreshold is the balance threshold for reduced max bet
-	HighBalanceThreshold int64 = 10000
-	// HighBalanceMaxBet is the max bet when balance exceeds threshold
-	HighBalanceMaxBet int64 = 1000
 	// MessageDeleteInterval is the interval for auto-deleting bot messages (30 minutes)
 	MessageDeleteInterval = 30 * time.Minute
 )
+
+// BetTier represents a balance tier with its max bet limit
+type BetTier struct {
+	MinBalance int64 // Minimum balance for this tier
+	MaxBet     int64 // Maximum bet allowed for this tier
+}
+
+// BetTiers defines the tiered betting limits based on balance
+// Higher balance = higher max bet allowed
+var BetTiers = []BetTier{
+	{MinBalance: 500000, MaxBet: 10000}, // 50万+ 余额: 最大下注 1万
+	{MinBalance: 100000, MaxBet: 5000},  // 10万-50万 余额: 最大下注 5千
+	{MinBalance: 0, MaxBet: 3000},       // 10万以下: 最大下注 3千
+}
 
 // TrackedMessage represents a message to be deleted later
 type TrackedMessage struct {
@@ -121,14 +131,29 @@ func (h *GameHandler) trackMessage(chatID int64, messageID int) {
 	})
 }
 
-// getEffectiveMaxBet returns the max bet based on user's balance.
+// getEffectiveMaxBet returns the max bet based on user's balance using tiered limits.
+// Higher balance users have lower max bet limits.
 func (h *GameHandler) getEffectiveMaxBet(balance int64, configMaxBet int64) int64 {
-	if balance >= HighBalanceThreshold {
-		if HighBalanceMaxBet < configMaxBet {
-			return HighBalanceMaxBet
+	// Find the appropriate tier based on balance
+	for _, tier := range BetTiers {
+		if balance >= tier.MinBalance {
+			if tier.MaxBet < configMaxBet {
+				return tier.MaxBet
+			}
+			return configMaxBet
 		}
 	}
 	return configMaxBet
+}
+
+// getBalanceTierInfo returns the current tier's max bet and threshold for error messages
+func getBalanceTierInfo(balance int64) (maxBet int64, threshold int64) {
+	for _, tier := range BetTiers {
+		if balance >= tier.MinBalance {
+			return tier.MaxBet, tier.MinBalance
+		}
+	}
+	return BetTiers[len(BetTiers)-1].MaxBet, 0
 }
 
 // checkCooldown checks if user is in cooldown for a game.
@@ -200,8 +225,9 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 	// Check max bet based on balance
 	maxBet := h.getEffectiveMaxBet(balance, h.cfg.Games.Dice.MaxBet)
 	if bet > maxBet {
-		if balance >= HighBalanceThreshold {
-			return c.Reply(fmt.Sprintf("❌ 余额超过 %d，单次下注上限为 %d", HighBalanceThreshold, HighBalanceMaxBet))
+		tierMaxBet, tierThreshold := getBalanceTierInfo(balance)
+		if tierThreshold > 0 {
+			return c.Reply(fmt.Sprintf("❌ 余额超过 %d，单次下注上限为 %d", tierThreshold, tierMaxBet))
 		}
 		return c.Reply(fmt.Sprintf("❌ 最大下注金额为 %d", maxBet))
 	}
@@ -334,8 +360,9 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 	// Check max bet based on balance (use dice max bet as default)
 	maxBet := h.getEffectiveMaxBet(balance, h.cfg.Games.Dice.MaxBet)
 	if bet > maxBet {
-		if balance >= HighBalanceThreshold {
-			return c.Reply(fmt.Sprintf("❌ 余额超过 %d，单次下注上限为 %d", HighBalanceThreshold, HighBalanceMaxBet))
+		tierMaxBet, tierThreshold := getBalanceTierInfo(balance)
+		if tierThreshold > 0 {
+			return c.Reply(fmt.Sprintf("❌ 余额超过 %d，单次下注上限为 %d", tierThreshold, tierMaxBet))
 		}
 		return c.Reply(fmt.Sprintf("❌ 最大下注金额为 %d", maxBet))
 	}
@@ -525,6 +552,16 @@ func (h *GameHandler) settleSicBo(ctx context.Context, chatID int64, bot *tele.B
 		return err
 	}
 
+	// Get starter info before settling (session will be deleted after settle)
+	starterID := h.sicboGame.GetSessionStarterID(chatID)
+	starterUsername := ""
+	if starterID != 0 {
+		starterUser, err := h.accountService.GetUser(ctx, starterID)
+		if err == nil && starterUser != nil {
+			starterUsername = starterUser.Username
+		}
+	}
+
 	// Settle the game
 	payouts, details, err := h.sicboGame.Settle(ctx, chatID)
 	if err != nil {
@@ -582,7 +619,7 @@ func (h *GameHandler) settleSicBo(ctx context.Context, chatID int64, bot *tele.B
 	}
 
 	// Format and send settlement message
-	msg := sicbo.FormatSettlementMessage(diceArr, playerResults)
+	msg := sicbo.FormatSettlementMessage(diceArr, playerResults, starterUsername)
 
 	// Send result to chat
 	if bot != nil {
@@ -616,6 +653,16 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 
 	// Parse callback data
 	action, param := sicbo.DecodeCallback(callback.Data)
+	
+	// Debug logging
+	log.Debug().
+		Str("raw_data", callback.Data).
+		Str("action", action).
+		Str("param", param).
+		Int64("user_id", sender.ID).
+		Int64("chat_id", chat.ID).
+		Msg("SicBo callback received")
+	
 	if action == "" {
 		return c.Respond(&tele.CallbackResponse{
 			Text: "❌ 无效操作",
@@ -626,9 +673,18 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 	if action == "early_settle" {
 		// Check if user is the session starter
 		starterID := h.sicboGame.GetSessionStarterID(chat.ID)
+		
+		// Debug logging for starter check
+		log.Debug().
+			Int64("starter_id", starterID).
+			Int64("sender_id", sender.ID).
+			Int64("chat_id", chat.ID).
+			Bool("is_starter", starterID == sender.ID).
+			Msg("Early settle check")
+		
 		if starterID != sender.ID {
 			return c.Respond(&tele.CallbackResponse{
-				Text:      "❌ 只有发起者可以提前开奖",
+				Text:      fmt.Sprintf("❌ 只有发起者可以提前开奖 (发起者ID: %d, 你的ID: %d)", starterID, sender.ID),
 				ShowAlert: true,
 			})
 		}
