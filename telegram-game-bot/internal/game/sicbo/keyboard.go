@@ -198,29 +198,30 @@ func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) 
 	total := dice[0] + dice[1] + dice[2]
 	isTriple := IsTriple(dice)
 
-	// Header
-	msg := "🎰 骰宝开奖结果\n"
-	msg += "╭───────────────╮\n"
+	// Header with dice emoji border
+	msg := "🎰 ═══ 骰宝开奖 ═══ 🎰\n\n"
 	
-	// Dice display
-	msg += fmt.Sprintf("│  🎲 %d   🎲 %d   🎲 %d  │\n", dice[0], dice[1], dice[2])
-	msg += fmt.Sprintf("│  📊 点数: %d", total)
-
+	// Dice display - big and centered
+	msg += fmt.Sprintf("     🎲 %d    🎲 %d    🎲 %d\n\n", dice[0], dice[1], dice[2])
+	
+	// Result
 	if isTriple {
-		msg += " 🔥围骰  │\n"
+		msg += fmt.Sprintf("  💥 点数: %d 【围骰】💥\n", total)
 	} else if total >= 11 {
-		msg += " (大)    │\n"
+		msg += fmt.Sprintf("  📊 点数: %d 【大】\n", total)
 	} else {
-		msg += " (小)    │\n"
+		msg += fmt.Sprintf("  📊 点数: %d 【小】\n", total)
 	}
-	msg += "╰───────────────╯\n"
+
+	msg += "\n══════════════════════\n"
 
 	if len(playerResults) == 0 {
-		msg += "\n😴 本局无人下注"
+		msg += "\n  😴 本局无人下注\n"
+		msg += "\n══════════════════════"
 		return msg
 	}
 
-	// Find top winner
+	// Find top winner and calculate stats
 	var topWinner PlayerResult
 	var hasWinner bool
 	var totalWinners, totalLosers int
@@ -240,7 +241,7 @@ func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) 
 		}
 	}
 
-	// Show top winner
+	// Show top winner prominently
 	if hasWinner {
 		displayName := topWinner.Username
 		if displayName == "" {
@@ -249,17 +250,18 @@ func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) 
 		if !strings.HasPrefix(displayName, "@") {
 			displayName = "@" + displayName
 		}
-		msg += fmt.Sprintf("\n🏆 最高赢家: %s +%d\n", displayName, topWinner.TotalPayout)
+		msg += fmt.Sprintf("\n  🏆 最大赢家: %s\n", displayName)
+		msg += fmt.Sprintf("  💰 赢得: +%d 金币\n", topWinner.TotalPayout)
 	}
 
-	// Summary
-	msg += "\n┌─ 本局统计 ─┐\n"
-	msg += fmt.Sprintf("│ 📈 赢家: %d人 (+%d)\n", totalWinners, totalWinAmount)
-	msg += fmt.Sprintf("│ 📉 输家: %d人 (-%d)\n", totalLosers, totalLoseAmount)
-	msg += "└────────────┘\n"
+	// Summary stats
+	msg += "\n  ┌──────────────────┐\n"
+	msg += fmt.Sprintf("  │ 🟢 赢家 %d人  +%d\n", totalWinners, totalWinAmount)
+	msg += fmt.Sprintf("  │ 🔴 输家 %d人  -%d\n", totalLosers, totalLoseAmount)
+	msg += "  └──────────────────┘\n"
 
-	// Player results
-	msg += "\n📋 玩家结算:\n"
+	// Player results list
+	msg += "\n  📋 结算明细:\n"
 	for _, result := range playerResults {
 		net := result.TotalPayout
 		displayName := result.Username
@@ -271,13 +273,15 @@ func FormatSettlementMessage(dice [3]int, playerResults map[int64]PlayerResult) 
 		}
 
 		if net > 0 {
-			msg += fmt.Sprintf("  ✅ %s +%d\n", displayName, net)
+			msg += fmt.Sprintf("    🟢 %s  +%d\n", displayName, net)
 		} else if net < 0 {
-			msg += fmt.Sprintf("  ❌ %s %d\n", displayName, net)
+			msg += fmt.Sprintf("    🔴 %s  %d\n", displayName, net)
 		} else {
-			msg += fmt.Sprintf("  ➖ %s ±0\n", displayName)
+			msg += fmt.Sprintf("    ⚪ %s  ±0\n", displayName)
 		}
 	}
+
+	msg += "\n══════════════════════"
 
 	return msg
 }
