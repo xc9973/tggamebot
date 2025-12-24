@@ -111,6 +111,73 @@ func (kb *KeyboardBuilder) BuildMainPanel() *tele.ReplyMarkup {
 	return markup
 }
 
+// BuildMainPanelWithSettle builds the main betting panel keyboard with early settle button.
+// Only shown to the session starter.
+func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
+	markup := &tele.ReplyMarkup{}
+
+	// Row 1: Big/Small [押大] [押小]
+	bigSmallRow := []tele.InlineButton{
+		{
+			Text: "押大",
+			Data: EncodeCallback("big", ""),
+		},
+		{
+			Text: "押小",
+			Data: EncodeCallback("small", ""),
+		},
+	}
+
+	// Row 2: Single numbers [押1] [押2] [押3]
+	singleRow1 := []tele.InlineButton{
+		{
+			Text: "押1",
+			Data: EncodeCallback("single", "1"),
+		},
+		{
+			Text: "押2",
+			Data: EncodeCallback("single", "2"),
+		},
+		{
+			Text: "押3",
+			Data: EncodeCallback("single", "3"),
+		},
+	}
+
+	// Row 3: Single numbers [押4] [押5] [押6]
+	singleRow2 := []tele.InlineButton{
+		{
+			Text: "押4",
+			Data: EncodeCallback("single", "4"),
+		},
+		{
+			Text: "押5",
+			Data: EncodeCallback("single", "5"),
+		},
+		{
+			Text: "押6",
+			Data: EncodeCallback("single", "6"),
+		},
+	}
+
+	// Row 4: Early settle button [🎲 提前开奖]
+	settleRow := []tele.InlineButton{
+		{
+			Text: "🎲 提前开奖",
+			Data: EncodeCallback("early_settle", ""),
+		},
+	}
+
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		bigSmallRow,
+		singleRow1,
+		singleRow2,
+		settleRow,
+	}
+
+	return markup
+}
+
 // FormatPanelMessage formats the betting panel message.
 func FormatPanelMessage(remainingTime int, playerCount int, totalBetAmount int64) string {
 	msg := "🎲 骰宝 - 下注中\n"

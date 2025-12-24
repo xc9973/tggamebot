@@ -40,6 +40,7 @@ type Bet struct {
 // Session represents an active SicBo game session.
 type Session struct {
 	ChatID         int64
+	StarterID      int64 // User who started the session
 	StartTime      time.Time
 	BettingEndTime time.Time
 	Bets           map[int64]map[string]*Bet // userID -> betKey -> Bet
@@ -111,7 +112,7 @@ func (g *SicBoGame) Play(ctx context.Context, userID int64, bet int64, params ma
 
 // StartSession begins a new multiplayer game session in a chat.
 // Requirements: 5.1
-func (g *SicBoGame) StartSession(ctx context.Context, chatID int64, duration int) error {
+func (g *SicBoGame) StartSession(ctx context.Context, chatID int64, starterID int64, duration int) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -127,6 +128,7 @@ func (g *SicBoGame) StartSession(ctx context.Context, chatID int64, duration int
 	now := time.Now()
 	g.sessions[chatID] = &Session{
 		ChatID:         chatID,
+		StarterID:      starterID,
 		StartTime:      now,
 		BettingEndTime: now.Add(time.Duration(duration) * time.Second),
 		Bets:           make(map[int64]map[string]*Bet),
@@ -381,6 +383,19 @@ func (g *SicBoGame) GetSessionStats(chatID int64) (playerCount int, totalBetAmou
 	}
 
 	return playerCount, totalBetAmount, betCount
+}
+
+// GetSessionStarterID returns the user ID who started the session.
+func (g *SicBoGame) GetSessionStarterID(chatID int64) int64 {
+	g.mu.RLock()
+	session, exists := g.sessions[chatID]
+	g.mu.RUnlock()
+
+	if !exists {
+		return 0
+	}
+
+	return session.StarterID
 }
 
 // rollDice generates three random dice values.

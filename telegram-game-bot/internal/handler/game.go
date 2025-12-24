@@ -429,9 +429,9 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 		return c.Reply(fmt.Sprintf("❌ 当前已有进行中的游戏，剩余 %d 秒", remaining))
 	}
 
-	// Start new session
+	// Start new session with starter ID
 	duration := h.cfg.Games.SicBo.BettingDurationSeconds
-	err := h.sicboGame.StartSession(ctx, chat.ID, duration)
+	err := h.sicboGame.StartSession(ctx, chat.ID, sender.ID, duration)
 	if err != nil {
 		if errors.Is(err, sicbo.ErrSessionExists) {
 			return c.Reply("❌ 当前已有进行中的游戏")
@@ -439,25 +439,9 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 		return c.Reply("❌ 启动游戏失败，请稍后重试")
 	}
 
-	// Send 3 dice animation as opening
-	for i := 0; i < 3; i++ {
-		diceMsg, err := c.Bot().Send(chat, tele.Cube)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to send sicbo opening dice")
-		} else {
-			h.trackMessage(chat.ID, diceMsg.ID)
-		}
-		if i < 2 {
-			time.Sleep(300 * time.Millisecond)
-		}
-	}
-
-	// Wait for dice animation
-	time.Sleep(2 * time.Second)
-
-	// Build keyboard
+	// Build keyboard with early settle button (only starter sees it)
 	kb := sicbo.NewKeyboardBuilder()
-	markup := kb.BuildMainPanel()
+	markup := kb.BuildMainPanelWithSettle()
 
 	// Send betting panel
 	msg := sicbo.FormatPanelMessage(duration, 0, 0)
@@ -468,7 +452,7 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 		h.trackMessage(chat.ID, panelMsg.ID)
 	}
 
-	// Schedule auto-settle
+	// Schedule auto-settle (3 seconds before end time to show dice animation)
 	go h.scheduleSicBoSettle(chat.ID, duration, c.Bot())
 
 	return nil
@@ -476,7 +460,12 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 
 // scheduleSicBoSettle schedules automatic settlement after betting phase ends.
 func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int, bot *tele.Bot) {
-	time.Sleep(time.Duration(durationSecs) * time.Second)
+	// Wait until 3 seconds before end time
+	waitTime := durationSecs - 3
+	if waitTime < 0 {
+		waitTime = 0
+	}
+	time.Sleep(time.Duration(waitTime) * time.Second)
 
 	// Check if session still exists (might have been manually settled)
 	if !h.sicboGame.IsSessionActive(chatID) {
@@ -484,7 +473,31 @@ func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int, bot *t
 	}
 
 	ctx := context.Background()
-	h.settleSicBo(ctx, chatID, bot)
+	h.settleSicBoWithAnimation(ctx, chatID, bot)
+}
+
+// settleSicBoWithAnimation sends dice animation and then settles the game.
+func (h *GameHandler) settleSicBoWithAnimation(ctx context.Context, chatID int64, bot *tele.Bot) error {
+	chat := &tele.Chat{ID: chatID}
+
+	// Send 3 dice animation
+	for i := 0; i < 3; i++ {
+		diceMsg, err := bot.Send(chat, tele.Cube)
+		if err != nil {
+			log.Debug().Err(err).Msg("Failed to send sicbo dice animation")
+		} else {
+			h.trackMessage(chatID, diceMsg.ID)
+		}
+		if i < 2 {
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+
+	// Wait for dice animation to complete
+	time.Sleep(3 * time.Second)
+
+	// Now settle the game
+	return h.settleSicBo(ctx, chatID, bot)
 }
 
 // HandleSicBoSettle handles the /sicbo_settle command to manually settle the game.
@@ -601,19 +614,48 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 		return nil
 	}
 
-	// Check if session is active
-	if !h.sicboGame.IsSessionActive(chat.ID) {
-		return c.Respond(&tele.CallbackResponse{
-			Text:      "❌ 游戏已结束",
-			ShowAlert: true,
-		})
-	}
-
 	// Parse callback data
 	action, param := sicbo.DecodeCallback(callback.Data)
 	if action == "" {
 		return c.Respond(&tele.CallbackResponse{
 			Text: "❌ 无效操作",
+		})
+	}
+
+	// Handle early settle action
+	if action == "early_settle" {
+		// Check if user is the session starter
+		starterID := h.sicboGame.GetSessionStarterID(chat.ID)
+		if starterID != sender.ID {
+			return c.Respond(&tele.CallbackResponse{
+				Text:      "❌ 只有发起者可以提前开奖",
+				ShowAlert: true,
+			})
+		}
+
+		// Check if session is active
+		if !h.sicboGame.IsSessionActive(chat.ID) {
+			return c.Respond(&tele.CallbackResponse{
+				Text:      "❌ 游戏已结束",
+				ShowAlert: true,
+			})
+		}
+
+		// Respond immediately
+		c.Respond(&tele.CallbackResponse{
+			Text: "🎲 开始开奖...",
+		})
+
+		// Settle with animation
+		go h.settleSicBoWithAnimation(ctx, chat.ID, c.Bot())
+		return nil
+	}
+
+	// Check if session is active
+	if !h.sicboGame.IsSessionActive(chat.ID) {
+		return c.Respond(&tele.CallbackResponse{
+			Text:      "❌ 游戏已结束",
+			ShowAlert: true,
 		})
 	}
 
