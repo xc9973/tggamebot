@@ -47,9 +47,19 @@ func WhitelistMiddleware(cfg *config.Config) tele.MiddlewareFunc {
 				return nil
 			}
 
-			// Check if it's a private chat - allow all private chats
+			// Check if it's a private chat
 			if chat.Type == tele.ChatPrivate {
-				return next(c)
+				// Allow if user has previously used bot in whitelisted group
+				// Requirements: 7.2
+				if IsPrivateUserAllowed(sender.ID) {
+					return next(c)
+				}
+
+				// Otherwise, ignore private chat from unknown users
+				log.Debug().
+					Int64("user_id", sender.ID).
+					Msg("Ignoring private chat from user not in whitelist cache")
+				return nil
 			}
 
 			// For group chats, check whitelist
