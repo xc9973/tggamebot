@@ -346,13 +346,13 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 	}
 
 	// Schedule auto-settle
-	go h.scheduleSicBoSettle(chat.ID, duration)
+	go h.scheduleSicBoSettle(chat.ID, duration, c.Bot())
 
 	return nil
 }
 
 // scheduleSicBoSettle schedules automatic settlement after betting phase ends.
-func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int) {
+func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int, bot *tele.Bot) {
 	time.Sleep(time.Duration(durationSecs) * time.Second)
 
 	// Check if session still exists (might have been manually settled)
@@ -361,7 +361,7 @@ func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int) {
 	}
 
 	ctx := context.Background()
-	h.settleSicBo(ctx, chatID)
+	h.settleSicBo(ctx, chatID, bot)
 }
 
 // HandleSicBoSettle handles the /sicbo_settle command to manually settle the game.
@@ -377,11 +377,11 @@ func (h *GameHandler) HandleSicBoSettle(c tele.Context) error {
 		return c.Reply("❌ 当前没有进行中的游戏")
 	}
 
-	return h.settleSicBo(ctx, chat.ID)
+	return h.settleSicBo(ctx, chat.ID, c.Bot())
 }
 
 // settleSicBo settles the SicBo game and sends results.
-func (h *GameHandler) settleSicBo(ctx context.Context, chatID int64) error {
+func (h *GameHandler) settleSicBo(ctx context.Context, chatID int64, bot *tele.Bot) error {
 	// Get all bets before settling
 	bets, err := h.sicboGame.GetSessionBets(ctx, chatID)
 	if err != nil {
@@ -448,13 +448,19 @@ func (h *GameHandler) settleSicBo(ctx context.Context, chatID int64) error {
 	// Format and send settlement message
 	msg := sicbo.FormatSettlementMessage(diceArr, playerResults)
 
-	// We need to send to the chat - this requires access to the bot
-	// This is a limitation of the current design - we'll log the result
+	// Send result to chat
+	if bot != nil {
+		chat := &tele.Chat{ID: chatID}
+		_, err = bot.Send(chat, msg)
+		if err != nil {
+			log.Error().Err(err).Int64("chat_id", chatID).Msg("Failed to send sicbo settlement message")
+		}
+	}
+
 	log.Info().
 		Int64("chat_id", chatID).
 		Interface("dice", diceArr).
 		Interface("payouts", payouts).
-		Str("message", msg).
 		Msg("SicBo game settled")
 
 	return nil
@@ -575,6 +581,22 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 		betName = "大"
 	case "small":
 		betName = "小"
+	}
+
+	// Update the panel message with current stats
+	remaining := h.sicboGame.GetSessionTimeRemaining(chat.ID)
+	playerCount, totalBetAmount, _ := h.sicboGame.GetSessionStats(chat.ID)
+	
+	kb := sicbo.NewKeyboardBuilder()
+	markup := kb.BuildMainPanel()
+	msg := sicbo.FormatPanelMessage(remaining, playerCount, totalBetAmount)
+	
+	// Edit the original message to show updated stats
+	if callback.Message != nil {
+		_, err = c.Bot().Edit(callback.Message, msg, markup)
+		if err != nil {
+			log.Debug().Err(err).Msg("Failed to edit sicbo panel message")
+		}
 	}
 
 	return c.Respond(&tele.CallbackResponse{
