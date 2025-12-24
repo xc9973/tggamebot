@@ -753,7 +753,7 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 	playerCount, totalBetAmount, _ := h.sicboGame.GetSessionStats(chat.ID)
 	
 	kb := sicbo.NewKeyboardBuilder()
-	markup := kb.BuildMainPanel()
+	markup := kb.BuildMainPanelWithSettle() // Always show settle button
 	msg := sicbo.FormatPanelMessage(remaining, playerCount, totalBetAmount)
 	
 	// Edit the original message to show updated stats
