@@ -235,3 +235,46 @@ func (h *AdminHandler) parseAdminArgs(c tele.Context) (int64, string, int64, err
 
 	return targetID, targetUsername, amount, nil
 }
+
+// HandleAdminGiftAll handles the /admin_gift_all command.
+// Format: /admin_gift_all amount
+// Adds the specified amount to ALL users' balances.
+func (h *AdminHandler) HandleAdminGiftAll(c tele.Context) error {
+	ctx := context.Background()
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+
+	// Parse arguments
+	args := c.Args()
+	if len(args) < 1 {
+		return c.Reply("❌ 用法: /admin_gift_all 金额\n例如: /admin_gift_all 100")
+	}
+
+	amount, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || amount <= 0 {
+		return c.Reply("❌ 金额必须是大于 0 的整数")
+	}
+
+	// Add balance to all users
+	count, err := h.accountService.AddBalanceToAllUsers(ctx, amount)
+	if err != nil {
+		return c.Reply("❌ 操作失败，请稍后重试")
+	}
+
+	// Log admin operation
+	log.Info().
+		Int64("admin_id", sender.ID).
+		Int64("amount", amount).
+		Int64("user_count", count).
+		Str("operation", "admin_gift_all").
+		Msg("Admin gift all operation executed")
+
+	return c.Reply(fmt.Sprintf(
+		"✅ 赠送成功\n\n"+
+			"🎁 赠送金额: %d 金币\n"+
+			"👥 受益用户: %d 人",
+		amount, count,
+	))
+}

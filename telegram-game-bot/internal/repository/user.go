@@ -302,3 +302,56 @@ func (r *UserRepository) Exists(ctx context.Context, telegramID int64) (bool, er
 
 	return exists, nil
 }
+
+// GetAllUsers retrieves all users from the database.
+func (r *UserRepository) GetAllUsers(ctx context.Context) ([]*model.User, error) {
+	const query = `
+		SELECT telegram_id, username, balance, last_daily_claim, created_at, updated_at
+		FROM users
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all users: %w", err)
+	}
+	defer rows.Close()
+
+	var users []*model.User
+	for rows.Next() {
+		var user model.User
+		err := rows.Scan(
+			&user.TelegramID,
+			&user.Username,
+			&user.Balance,
+			&user.LastDailyClaim,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan user: %w", err)
+		}
+		users = append(users, &user)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating users: %w", err)
+	}
+
+	return users, nil
+}
+
+// AddBalanceToAllUsers adds the specified amount to all users' balances.
+// Returns the number of users updated.
+func (r *UserRepository) AddBalanceToAllUsers(ctx context.Context, amount int64) (int64, error) {
+	const query = `
+		UPDATE users
+		SET balance = balance + $1, updated_at = NOW()
+	`
+
+	result, err := r.pool.Exec(ctx, query, amount)
+	if err != nil {
+		return 0, fmt.Errorf("failed to add balance to all users: %w", err)
+	}
+
+	return result.RowsAffected(), nil
+}

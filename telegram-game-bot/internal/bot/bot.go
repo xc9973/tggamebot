@@ -119,6 +119,7 @@ func (b *Bot) registerHandlers() {
 	adminGroup.Handle("/admin_add", b.adminHandler.HandleAdminAdd)
 	adminGroup.Handle("/admin_sub", b.adminHandler.HandleAdminSub)
 	adminGroup.Handle("/admin_set", b.adminHandler.HandleAdminSet)
+	adminGroup.Handle("/admin_gift_all", b.adminHandler.HandleAdminGiftAll)
 
 	// Ranking handler
 	b.bot.Handle("/daily_top", b.rankingHandler.HandleDailyTop)

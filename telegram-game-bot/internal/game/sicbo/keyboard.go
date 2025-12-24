@@ -50,37 +50,62 @@ func DecodeCallback(data string) (action string, param string) {
 
 // BuildMainPanel builds the main betting panel keyboard.
 // Layout:
-//   - Row 1: [1] [2] [3] [4] [5] [6] (single numbers)
-//   - Row 2: [大] [小] (big/small)
+//   - Row 1: [押大] [押小]
+//   - Row 2: [押1] [押2] [押3]
+//   - Row 3: [押4] [押5] [押6]
 //
 // Requirements: 5.6
 func (kb *KeyboardBuilder) BuildMainPanel() *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 
-	// Row 1: Single numbers [1] [2] [3] [4] [5] [6]
-	singleRow := make([]tele.InlineButton, len(SingleNumbers))
-	for i, num := range SingleNumbers {
-		singleRow[i] = tele.InlineButton{
-			Text: fmt.Sprintf("%d", num),
-			Data: EncodeCallback("single", fmt.Sprintf("%d", num)),
-		}
-	}
-
-	// Row 2: Big/Small [大] [小]
+	// Row 1: Big/Small [押大] [押小]
 	bigSmallRow := []tele.InlineButton{
 		{
-			Text: "大",
+			Text: "押大",
 			Data: EncodeCallback("big", ""),
 		},
 		{
-			Text: "小",
+			Text: "押小",
 			Data: EncodeCallback("small", ""),
 		},
 	}
 
+	// Row 2: Single numbers [押1] [押2] [押3]
+	singleRow1 := []tele.InlineButton{
+		{
+			Text: "押1",
+			Data: EncodeCallback("single", "1"),
+		},
+		{
+			Text: "押2",
+			Data: EncodeCallback("single", "2"),
+		},
+		{
+			Text: "押3",
+			Data: EncodeCallback("single", "3"),
+		},
+	}
+
+	// Row 3: Single numbers [押4] [押5] [押6]
+	singleRow2 := []tele.InlineButton{
+		{
+			Text: "押4",
+			Data: EncodeCallback("single", "4"),
+		},
+		{
+			Text: "押5",
+			Data: EncodeCallback("single", "5"),
+		},
+		{
+			Text: "押6",
+			Data: EncodeCallback("single", "6"),
+		},
+	}
+
 	markup.InlineKeyboard = [][]tele.InlineButton{
-		singleRow,
 		bigSmallRow,
+		singleRow1,
+		singleRow2,
 	}
 
 	return markup

@@ -154,3 +154,9 @@ func (s *AccountService) CanClaimDaily(ctx context.Context, telegramID int64) (b
 func (s *AccountService) GetTopUsers(ctx context.Context, limit int) ([]*model.User, error) {
 	return s.userRepo.GetTopUsers(ctx, limit)
 }
+
+// AddBalanceToAllUsers adds the specified amount to all users' balances.
+// Returns the number of users updated.
+func (s *AccountService) AddBalanceToAllUsers(ctx context.Context, amount int64) (int64, error) {
+	return s.userRepo.AddBalanceToAllUsers(ctx, amount)
+}

@@ -439,15 +439,33 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 		return c.Reply("❌ 启动游戏失败，请稍后重试")
 	}
 
+	// Send 3 dice animation as opening
+	for i := 0; i < 3; i++ {
+		diceMsg, err := c.Bot().Send(chat, tele.Cube)
+		if err != nil {
+			log.Debug().Err(err).Msg("Failed to send sicbo opening dice")
+		} else {
+			h.trackMessage(chat.ID, diceMsg.ID)
+		}
+		if i < 2 {
+			time.Sleep(300 * time.Millisecond)
+		}
+	}
+
+	// Wait for dice animation
+	time.Sleep(2 * time.Second)
+
 	// Build keyboard
 	kb := sicbo.NewKeyboardBuilder()
 	markup := kb.BuildMainPanel()
 
 	// Send betting panel
 	msg := sicbo.FormatPanelMessage(duration, 0, 0)
-	_, err = c.Bot().Send(chat, msg, markup)
+	panelMsg, err := c.Bot().Send(chat, msg, markup)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to send sicbo panel")
+	} else {
+		h.trackMessage(chat.ID, panelMsg.ID)
 	}
 
 	// Schedule auto-settle
