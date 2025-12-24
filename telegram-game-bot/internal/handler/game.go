@@ -133,17 +133,15 @@ func (h *GameHandler) trackMessage(chatID int64, messageID int) {
 }
 
 // getEffectiveMaxBet returns the max bet based on user's balance using tiered limits.
-// Higher balance users have lower max bet limits.
+// Tiered limits take priority over config max bet.
 func (h *GameHandler) getEffectiveMaxBet(balance int64, configMaxBet int64) int64 {
 	// Find the appropriate tier based on balance
 	for _, tier := range BetTiers {
 		if balance >= tier.MinBalance {
-			if tier.MaxBet < configMaxBet {
-				return tier.MaxBet
-			}
-			return configMaxBet
+			return tier.MaxBet
 		}
 	}
+	// Fallback to config max bet if no tier matches
 	return configMaxBet
 }
 
