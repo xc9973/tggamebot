@@ -17,7 +17,7 @@ const (
 const (
 	// FixedBetAmount is the fixed bet amount per button click
 	// Requirements: 5.3
-	FixedBetAmount int64 = 100
+	FixedBetAmount int64 = 1000
 )
 
 // IsTriple checks if all three dice show the same value.

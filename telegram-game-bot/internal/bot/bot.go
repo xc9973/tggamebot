@@ -139,6 +139,11 @@ func (b *Bot) registerHandlers() {
 // Start starts the bot polling.
 func (b *Bot) Start() {
 	log.Info().Msg("Starting bot...")
+	
+	// Start message cleaner for auto-deleting old bot messages
+	b.gameHandler.StartMessageCleaner(b.bot)
+	log.Info().Msg("Message cleaner started (30 min interval)")
+	
 	b.bot.Start()
 }
 

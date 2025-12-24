@@ -24,6 +24,22 @@ import (
 	"telegram-game-bot/internal/service"
 )
 
+const (
+	// HighBalanceThreshold is the balance threshold for reduced max bet
+	HighBalanceThreshold int64 = 10000
+	// HighBalanceMaxBet is the max bet when balance exceeds threshold
+	HighBalanceMaxBet int64 = 1000
+	// MessageDeleteInterval is the interval for auto-deleting bot messages (30 minutes)
+	MessageDeleteInterval = 30 * time.Minute
+)
+
+// TrackedMessage represents a message to be deleted later
+type TrackedMessage struct {
+	ChatID    int64
+	MessageID int
+	SentAt    time.Time
+}
+
 // GameHandler handles game-related commands.
 type GameHandler struct {
 	cfg             *config.Config
@@ -32,6 +48,8 @@ type GameHandler struct {
 	sicboGame       *sicbo.SicBoGame
 	userLock        *lock.UserLock
 	cooldowns       sync.Map // map[string]time.Time - key: "userID:game"
+	trackedMessages []TrackedMessage
+	messagesMu      sync.Mutex
 }
 
 // NewGameHandler creates a new GameHandler.
@@ -42,13 +60,75 @@ func NewGameHandler(
 	sicboGame *sicbo.SicBoGame,
 	userLock *lock.UserLock,
 ) *GameHandler {
-	return &GameHandler{
-		cfg:            cfg,
-		accountService: accountService,
-		gameRegistry:   gameRegistry,
-		sicboGame:      sicboGame,
-		userLock:       userLock,
+	h := &GameHandler{
+		cfg:             cfg,
+		accountService:  accountService,
+		gameRegistry:    gameRegistry,
+		sicboGame:       sicboGame,
+		userLock:        userLock,
+		trackedMessages: make([]TrackedMessage, 0),
 	}
+	return h
+}
+
+// StartMessageCleaner starts the background goroutine to delete old messages.
+func (h *GameHandler) StartMessageCleaner(bot *tele.Bot) {
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute) // Check every 5 minutes
+		defer ticker.Stop()
+
+		for range ticker.C {
+			h.cleanOldMessages(bot)
+		}
+	}()
+}
+
+// cleanOldMessages deletes messages older than MessageDeleteInterval.
+func (h *GameHandler) cleanOldMessages(bot *tele.Bot) {
+	h.messagesMu.Lock()
+	defer h.messagesMu.Unlock()
+
+	now := time.Now()
+	remaining := make([]TrackedMessage, 0)
+
+	for _, msg := range h.trackedMessages {
+		if now.Sub(msg.SentAt) >= MessageDeleteInterval {
+			// Try to delete the message
+			err := bot.Delete(&tele.Message{
+				ID:   msg.MessageID,
+				Chat: &tele.Chat{ID: msg.ChatID},
+			})
+			if err != nil {
+				log.Debug().Err(err).Int("msg_id", msg.MessageID).Msg("Failed to delete old message")
+			}
+		} else {
+			remaining = append(remaining, msg)
+		}
+	}
+
+	h.trackedMessages = remaining
+}
+
+// trackMessage adds a message to the tracking list for later deletion.
+func (h *GameHandler) trackMessage(chatID int64, messageID int) {
+	h.messagesMu.Lock()
+	defer h.messagesMu.Unlock()
+
+	h.trackedMessages = append(h.trackedMessages, TrackedMessage{
+		ChatID:    chatID,
+		MessageID: messageID,
+		SentAt:    time.Now(),
+	})
+}
+
+// getEffectiveMaxBet returns the max bet based on user's balance.
+func (h *GameHandler) getEffectiveMaxBet(balance int64, configMaxBet int64) int64 {
+	if balance >= HighBalanceThreshold {
+		if HighBalanceMaxBet < configMaxBet {
+			return HighBalanceMaxBet
+		}
+	}
+	return configMaxBet
 }
 
 // checkCooldown checks if user is in cooldown for a game.
@@ -91,14 +171,8 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 		return c.Reply("❌ 请输入有效的下注金额")
 	}
 
-	// Check max bet
-	maxBet := h.cfg.Games.Dice.MaxBet
-	if bet > maxBet {
-		return c.Reply(fmt.Sprintf("❌ 最大下注金额为 %d", maxBet))
-	}
-
-	// Check cooldown
-	cooldownSecs := h.cfg.Games.Dice.CooldownSeconds
+	// Check cooldown (3 seconds)
+	cooldownSecs := 3
 	if remaining := h.checkCooldown(sender.ID, "dice", cooldownSecs); remaining > 0 {
 		return c.Reply(fmt.Sprintf("⏰ 请等待 %d 秒后再玩", remaining))
 	}
@@ -122,6 +196,16 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 	if err != nil {
 		return c.Reply("❌ 获取余额失败")
 	}
+
+	// Check max bet based on balance
+	maxBet := h.getEffectiveMaxBet(balance, h.cfg.Games.Dice.MaxBet)
+	if bet > maxBet {
+		if balance >= HighBalanceThreshold {
+			return c.Reply(fmt.Sprintf("❌ 余额超过 %d，单次下注上限为 %d", HighBalanceThreshold, HighBalanceMaxBet))
+		}
+		return c.Reply(fmt.Sprintf("❌ 最大下注金额为 %d", maxBet))
+	}
+
 	if balance < bet {
 		return c.Reply("❌ 余额不足")
 	}
@@ -140,6 +224,7 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 		h.accountService.UpdateBalance(ctx, sender.ID, bet, model.TxTypeDice, nil)
 		return c.Reply("❌ 发送骰子失败")
 	}
+	h.trackMessage(c.Chat().ID, dice1Msg.ID)
 
 	// Wait a bit before sending second dice
 	time.Sleep(500 * time.Millisecond)
@@ -150,6 +235,7 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 		h.accountService.UpdateBalance(ctx, sender.ID, bet, model.TxTypeDice, nil)
 		return c.Reply("❌ 发送骰子失败")
 	}
+	h.trackMessage(c.Chat().ID, dice2Msg.ID)
 
 	// Get dice values
 	dice1Val := dice1Msg.Dice.Value
@@ -192,7 +278,11 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 		resultMsg = fmt.Sprintf("🎲🎲 %d + %d = %d\n😢 输了 %d 金币\n💰 余额: %d", dice1Val, dice2Val, total, bet, newBalance)
 	}
 
-	return c.Reply(resultMsg)
+	replyMsg, err := c.Bot().Reply(c.Message(), resultMsg)
+	if err == nil && replyMsg != nil {
+		h.trackMessage(c.Chat().ID, replyMsg.ID)
+	}
+	return err
 }
 
 // HandleSlot handles the /slot command.
@@ -215,8 +305,8 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 		return c.Reply("❌ 请输入有效的下注金额")
 	}
 
-	// Check cooldown
-	cooldownSecs := h.cfg.Games.Slot.CooldownSeconds
+	// Check cooldown (3 seconds)
+	cooldownSecs := 3
 	if remaining := h.checkCooldown(sender.ID, "slot", cooldownSecs); remaining > 0 {
 		return c.Reply(fmt.Sprintf("⏰ 请等待 %d 秒后再玩", remaining))
 	}
@@ -240,6 +330,16 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 	if err != nil {
 		return c.Reply("❌ 获取余额失败")
 	}
+
+	// Check max bet based on balance (use dice max bet as default)
+	maxBet := h.getEffectiveMaxBet(balance, h.cfg.Games.Dice.MaxBet)
+	if bet > maxBet {
+		if balance >= HighBalanceThreshold {
+			return c.Reply(fmt.Sprintf("❌ 余额超过 %d，单次下注上限为 %d", HighBalanceThreshold, HighBalanceMaxBet))
+		}
+		return c.Reply(fmt.Sprintf("❌ 最大下注金额为 %d", maxBet))
+	}
+
 	if balance < bet {
 		return c.Reply("❌ 余额不足")
 	}
@@ -258,6 +358,7 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 		h.accountService.UpdateBalance(ctx, sender.ID, bet, model.TxTypeSlot, nil)
 		return c.Reply("❌ 发送老虎机失败")
 	}
+	h.trackMessage(c.Chat().ID, slotMsg.ID)
 
 	// Get slot value
 	slotValue := slotMsg.Dice.Value
@@ -298,7 +399,11 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 		resultMsg = fmt.Sprintf("🎰 %s\n😢 没中，输了 %d 金币\n💰 余额: %d", slotDisplay, bet, newBalance)
 	}
 
-	return c.Reply(resultMsg)
+	replyMsg, err := c.Bot().Reply(c.Message(), resultMsg)
+	if err == nil && replyMsg != nil {
+		h.trackMessage(c.Chat().ID, replyMsg.ID)
+	}
+	return err
 }
 
 
@@ -537,7 +642,7 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 	if balance < betAmount {
 		h.userLock.Unlock(sender.ID)
 		return c.Respond(&tele.CallbackResponse{
-			Text:      "❌ 余额不足",
+			Text:      fmt.Sprintf("❌ 下注失败，余额不足（需要 %d，当前 %d）", betAmount, balance),
 			ShowAlert: true,
 		})
 	}
