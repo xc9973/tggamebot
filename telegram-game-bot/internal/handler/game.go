@@ -60,6 +60,7 @@ type GameHandler struct {
 	cooldowns       sync.Map // map[string]time.Time - key: "userID:game"
 	trackedMessages []TrackedMessage
 	messagesMu      sync.Mutex
+	sicboPanels     sync.Map // map[int64]int - chatID -> panelMessageID
 }
 
 // NewGameHandler creates a new GameHandler.
@@ -477,7 +478,12 @@ func (h *GameHandler) HandleSicBoStart(c tele.Context) error {
 		log.Error().Err(err).Msg("Failed to send sicbo panel")
 	} else {
 		h.trackMessage(chat.ID, panelMsg.ID)
+		// Store panel message ID for periodic refresh
+		h.sicboPanels.Store(chat.ID, panelMsg.ID)
 	}
+
+	// Schedule periodic panel refresh (every 15 seconds)
+	go h.scheduleSicBoPanelRefresh(chat.ID, duration, c.Bot())
 
 	// Schedule auto-settle (3 seconds before end time to show dice animation)
 	go h.scheduleSicBoSettle(chat.ID, duration, c.Bot())
@@ -501,6 +507,46 @@ func (h *GameHandler) scheduleSicBoSettle(chatID int64, durationSecs int, bot *t
 
 	ctx := context.Background()
 	h.settleSicBoWithAnimation(ctx, chatID, bot)
+}
+
+// scheduleSicBoPanelRefresh periodically refreshes the sicbo panel every 15 seconds.
+func (h *GameHandler) scheduleSicBoPanelRefresh(chatID int64, durationSecs int, bot *tele.Bot) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// Check if session still exists
+		if !h.sicboGame.IsSessionActive(chatID) {
+			// Clean up panel reference
+			h.sicboPanels.Delete(chatID)
+			return
+		}
+
+		// Get panel message ID
+		panelMsgID, ok := h.sicboPanels.Load(chatID)
+		if !ok {
+			return
+		}
+
+		// Get current stats
+		remaining := h.sicboGame.GetSessionTimeRemaining(chatID)
+		playerCount, totalBetAmount, _ := h.sicboGame.GetSessionStats(chatID)
+
+		// Build updated message
+		kb := sicbo.NewKeyboardBuilder()
+		markup := kb.BuildMainPanelWithSettle()
+		msg := sicbo.FormatPanelMessage(remaining, playerCount, totalBetAmount)
+
+		// Edit the panel message
+		editMsg := &tele.Message{
+			ID:   panelMsgID.(int),
+			Chat: &tele.Chat{ID: chatID},
+		}
+		_, err := bot.Edit(editMsg, msg, markup)
+		if err != nil {
+			log.Debug().Err(err).Int64("chat_id", chatID).Msg("Failed to refresh sicbo panel")
+		}
+	}
 }
 
 // settleSicBoWithAnimation sends dice animation and then settles the game.
@@ -804,21 +850,8 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 		betName = "小"
 	}
 
-	// Update the panel message with current stats
-	remaining := h.sicboGame.GetSessionTimeRemaining(chat.ID)
-	playerCount, totalBetAmount, _ := h.sicboGame.GetSessionStats(chat.ID)
-	
-	kb := sicbo.NewKeyboardBuilder()
-	markup := kb.BuildMainPanelWithSettle() // Always show settle button
-	msg := sicbo.FormatPanelMessage(remaining, playerCount, totalBetAmount)
-	
-	// Edit the original message to show updated stats
-	if callback.Message != nil {
-		_, err = c.Bot().Edit(callback.Message, msg, markup)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to edit sicbo panel message")
-		}
-	}
+	// Don't refresh panel on every bet - let the 15s timer handle it
+	// This reduces API calls and makes the UI less jumpy
 
 	return c.Respond(&tele.CallbackResponse{
 		Text: fmt.Sprintf("✅ 已下注 %s: %d 金币", betName, betAmount),
