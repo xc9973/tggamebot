@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v3"
@@ -31,7 +30,7 @@ func NewAdminHandler(accountService *service.AccountService, userLock *lock.User
 }
 
 // HandleAdminAdd handles the /admin_add command.
-// Format: /admin_add @username amount
+// Format: /admin_add <user_id> <amount>
 // Requirements: 6.1, 6.5
 func (h *AdminHandler) HandleAdminAdd(c tele.Context) error {
 	ctx := context.Background()
@@ -41,7 +40,7 @@ func (h *AdminHandler) HandleAdminAdd(c tele.Context) error {
 	}
 
 	// Parse arguments
-	targetID, targetUsername, amount, err := h.parseAdminArgs(c)
+	targetID, amount, err := h.parseAdminArgs(c)
 	if err != nil {
 		return c.Reply(err.Error())
 	}
@@ -58,29 +57,33 @@ func (h *AdminHandler) HandleAdminAdd(c tele.Context) error {
 	desc := fmt.Sprintf("管理员 %d 添加", sender.ID)
 	user, err := h.accountService.UpdateBalance(ctx, targetID, amount, model.TxTypeAdminAdd, &desc)
 	if err != nil {
-		return c.Reply("❌ 操作失败，请稍后重试")
+		return c.Reply("❌ 操作失败，用户可能不存在")
 	}
 
 	// Log admin operation (Requirements: 6.5)
 	log.Info().
 		Int64("admin_id", sender.ID).
 		Int64("target_id", targetID).
-		Str("target_username", targetUsername).
 		Int64("amount", amount).
 		Str("operation", "admin_add").
 		Msg("Admin operation executed")
 
+	displayName := user.Username
+	if displayName == "" {
+		displayName = fmt.Sprintf("%d", targetID)
+	}
+
 	return c.Reply(fmt.Sprintf(
 		"✅ 操作成功\n\n"+
-			"👤 用户: @%s\n"+
+			"👤 用户: %s (ID: %d)\n"+
 			"➕ 添加: %d 金币\n"+
 			"💰 当前余额: %d 金币",
-		targetUsername, amount, user.Balance,
+		displayName, targetID, amount, user.Balance,
 	))
 }
 
 // HandleAdminSub handles the /admin_sub command.
-// Format: /admin_sub @username amount
+// Format: /admin_sub <user_id> <amount>
 // Requirements: 6.2, 6.5
 func (h *AdminHandler) HandleAdminSub(c tele.Context) error {
 	ctx := context.Background()
@@ -90,7 +93,7 @@ func (h *AdminHandler) HandleAdminSub(c tele.Context) error {
 	}
 
 	// Parse arguments
-	targetID, targetUsername, amount, err := h.parseAdminArgs(c)
+	targetID, amount, err := h.parseAdminArgs(c)
 	if err != nil {
 		return c.Reply(err.Error())
 	}
@@ -107,29 +110,33 @@ func (h *AdminHandler) HandleAdminSub(c tele.Context) error {
 	desc := fmt.Sprintf("管理员 %d 扣除", sender.ID)
 	user, err := h.accountService.UpdateBalance(ctx, targetID, -amount, model.TxTypeAdminSub, &desc)
 	if err != nil {
-		return c.Reply("❌ 操作失败，请稍后重试")
+		return c.Reply("❌ 操作失败，用户可能不存在")
 	}
 
 	// Log admin operation (Requirements: 6.5)
 	log.Info().
 		Int64("admin_id", sender.ID).
 		Int64("target_id", targetID).
-		Str("target_username", targetUsername).
 		Int64("amount", amount).
 		Str("operation", "admin_sub").
 		Msg("Admin operation executed")
 
+	displayName := user.Username
+	if displayName == "" {
+		displayName = fmt.Sprintf("%d", targetID)
+	}
+
 	return c.Reply(fmt.Sprintf(
 		"✅ 操作成功\n\n"+
-			"👤 用户: @%s\n"+
+			"👤 用户: %s (ID: %d)\n"+
 			"➖ 扣除: %d 金币\n"+
 			"💰 当前余额: %d 金币",
-		targetUsername, amount, user.Balance,
+		displayName, targetID, amount, user.Balance,
 	))
 }
 
 // HandleAdminSet handles the /admin_set command.
-// Format: /admin_set @username amount
+// Format: /admin_set <user_id> <amount>
 // Requirements: 6.3, 6.5
 func (h *AdminHandler) HandleAdminSet(c tele.Context) error {
 	ctx := context.Background()
@@ -139,7 +146,7 @@ func (h *AdminHandler) HandleAdminSet(c tele.Context) error {
 	}
 
 	// Parse arguments
-	targetID, targetUsername, newBalance, err := h.parseAdminArgs(c)
+	targetID, newBalance, err := h.parseAdminArgs(c)
 	if err != nil {
 		return c.Reply(err.Error())
 	}
@@ -170,70 +177,47 @@ func (h *AdminHandler) HandleAdminSet(c tele.Context) error {
 	log.Info().
 		Int64("admin_id", sender.ID).
 		Int64("target_id", targetID).
-		Str("target_username", targetUsername).
 		Int64("old_balance", currentBalance).
 		Int64("new_balance", newBalance).
 		Str("operation", "admin_set").
 		Msg("Admin operation executed")
 
+	displayName := user.Username
+	if displayName == "" {
+		displayName = fmt.Sprintf("%d", targetID)
+	}
+
 	return c.Reply(fmt.Sprintf(
 		"✅ 操作成功\n\n"+
-			"👤 用户: @%s\n"+
+			"👤 用户: %s (ID: %d)\n"+
 			"📝 原余额: %d 金币\n"+
 			"💰 新余额: %d 金币",
-		targetUsername, currentBalance, user.Balance,
+		displayName, targetID, currentBalance, user.Balance,
 	))
 }
 
 // parseAdminArgs parses admin command arguments.
-// Returns targetID, targetUsername, amount, error
-func (h *AdminHandler) parseAdminArgs(c tele.Context) (int64, string, int64, error) {
+// Format: <user_id> <amount>
+// Returns targetID, amount, error
+func (h *AdminHandler) parseAdminArgs(c tele.Context) (int64, int64, error) {
 	args := c.Args()
 	if len(args) < 2 {
-		return 0, "", 0, fmt.Errorf("❌ 用法: %s @用户名 金额", c.Text())
+		return 0, 0, fmt.Errorf("❌ 用法: /admin_add <用户ID> <金额>\n例如: /admin_add 123456789 100")
 	}
 
-	// Parse target user
-	targetStr := args[0]
-	if !strings.HasPrefix(targetStr, "@") {
-		return 0, "", 0, fmt.Errorf("❌ 请使用 @用户名 格式指定用户")
+	// Parse target user ID
+	targetID, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("❌ 用户ID格式错误，请输入数字")
 	}
-	targetUsername := strings.TrimPrefix(targetStr, "@")
 
 	// Parse amount
 	amount, err := strconv.ParseInt(args[1], 10, 64)
 	if err != nil {
-		return 0, "", 0, fmt.Errorf("❌ 金额格式错误，请输入整数")
+		return 0, 0, fmt.Errorf("❌ 金额格式错误，请输入整数")
 	}
 
-	// Get target user ID from message mention or reply
-	var targetID int64
-
-	// Check if message has entities (mentions)
-	if c.Message() != nil && len(c.Message().Entities) > 0 {
-		for _, entity := range c.Message().Entities {
-			if entity.Type == tele.EntityMention && entity.User != nil {
-				if entity.User.Username == targetUsername {
-					targetID = entity.User.ID
-					break
-				}
-			}
-		}
-	}
-
-	// If no mention found, try to find user by reply
-	if targetID == 0 && c.Message() != nil && c.Message().ReplyTo != nil {
-		replyUser := c.Message().ReplyTo.Sender
-		if replyUser != nil && replyUser.Username == targetUsername {
-			targetID = replyUser.ID
-		}
-	}
-
-	if targetID == 0 {
-		return 0, "", 0, fmt.Errorf("❌ 找不到用户 @%s\n请确保该用户已使用过本机器人，或回复该用户的消息", targetUsername)
-	}
-
-	return targetID, targetUsername, amount, nil
+	return targetID, amount, nil
 }
 
 // HandleAdminGiftAll handles the /admin_gift_all command.
