@@ -40,6 +40,12 @@ func DecodeCallback(data string) (action string, param string) {
 	}
 
 	content := strings.TrimPrefix(data, CallbackPrefix)
+	
+	// Handle special actions with underscores
+	if strings.HasPrefix(content, "early_settle") {
+		return "early_settle", ""
+	}
+	
 	parts := strings.SplitN(content, "_", 2)
 	action = parts[0]
 	if len(parts) > 1 {
