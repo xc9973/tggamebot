@@ -76,6 +76,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	}
 
 	data := callback.Data
+	// Telebot v3 may add a \f prefix to callback data
+	if strings.HasPrefix(data, "\f") {
+		data = strings.TrimPrefix(data, "\f")
+	}
 
 	// Handle refresh
 	if data == shop.CallbackShopRefresh {

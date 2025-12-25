@@ -152,7 +152,36 @@ func (b *Bot) registerHandlers() {
 
 	// Generic callback handler for sicbo and shop buttons
 	b.bot.Handle(tele.OnCallback, b.handleCallback)
+
+	// Photo handler - returns file_id for admin use
+	b.bot.Handle(tele.OnPhoto, b.handlePhoto)
 }
+
+// handlePhoto handles photo messages and returns file_id (admin only)
+func (b *Bot) handlePhoto(c tele.Context) error {
+	sender := c.Sender()
+	if sender == nil {
+		return nil
+	}
+
+	// Only respond to admins
+	isAdmin := false
+	for _, adminID := range b.cfg.Admin.IDs {
+		if sender.ID == adminID {
+			isAdmin = true
+			break
+		}
+	}
+	if !isAdmin {
+		return nil
+	}
+
+	photo := c.Message().Photo
+	if photo == nil {
+		return nil
+	}
+
+	return c.Reply(fmt.Sprintf("📷 File ID:\n`%s`", photo.FileID), tele.ModeMarkdown)
 
 // handleStart routes /start to shop (private) or account (group)
 func (b *Bot) handleStart(c tele.Context) error {
@@ -171,6 +200,10 @@ func (b *Bot) handleCallback(c tele.Context) error {
 	}
 
 	data := callback.Data
+	// Telebot v3 may add a \f prefix to callback data
+	if strings.HasPrefix(data, "\f") {
+		data = strings.TrimPrefix(data, "\f")
+	}
 
 	// Route shop callbacks
 	if strings.HasPrefix(data, "shop_") {
