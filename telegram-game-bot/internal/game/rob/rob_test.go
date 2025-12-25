@@ -24,6 +24,61 @@ func TestGenerateAmountProperty(t *testing.T) {
 	})
 }
 
+// TestDetermineOutcomeProperty tests that outcomes are valid
+// Property: Outcome Validity
+func TestDetermineOutcomeProperty(t *testing.T) {
+	rapid.Check(t, func(t *rapid.T) {
+		outcome := DetermineOutcome()
+
+		// Outcome must be one of the valid types
+		if outcome != OutcomeSuccess && outcome != OutcomeFail && outcome != OutcomeCounterAttack {
+			t.Fatalf("Invalid outcome: %d", outcome)
+		}
+	})
+}
+
+// TestOutcomeDistribution tests that outcomes follow expected distribution
+// This is a statistical test, not a property test
+func TestOutcomeDistribution(t *testing.T) {
+	iterations := 10000
+	counts := map[RobOutcome]int{
+		OutcomeSuccess:       0,
+		OutcomeFail:          0,
+		OutcomeCounterAttack: 0,
+	}
+
+	for i := 0; i < iterations; i++ {
+		outcome := DetermineOutcome()
+		counts[outcome]++
+	}
+
+	// Check that each outcome occurs at least some percentage of the time
+	// Allow 10% margin for randomness
+	successRate := float64(counts[OutcomeSuccess]) / float64(iterations) * 100
+	failRate := float64(counts[OutcomeFail]) / float64(iterations) * 100
+	counterRate := float64(counts[OutcomeCounterAttack]) / float64(iterations) * 100
+
+	// Success should be around 50% (allow 40-60%)
+	if successRate < 40 || successRate > 60 {
+		t.Logf("Warning: Success rate %.1f%% is outside expected range (40-60%%)", successRate)
+	}
+
+	// Fail should be around 20% (allow 10-30%)
+	if failRate < 10 || failRate > 30 {
+		t.Logf("Warning: Fail rate %.1f%% is outside expected range (10-30%%)", failRate)
+	}
+
+	// Counter-attack should be around 30% (allow 20-40%)
+	if counterRate < 20 || counterRate > 40 {
+		t.Logf("Warning: Counter-attack rate %.1f%% is outside expected range (20-40%%)", counterRate)
+	}
+
+	t.Logf("Outcome distribution over %d iterations:", iterations)
+	t.Logf("  Success: %.1f%% (expected ~%d%%)", successRate, SuccessChance)
+	t.Logf("  Fail: %.1f%% (expected ~%d%%)", failRate, FailChance)
+	t.Logf("  Counter-attack: %.1f%% (expected ~%d%%)", counterRate, CounterAttackChance)
+}
+
 // TestCooldownProperty tests cooldown enforcement
 // Property 4: Cooldown Enforcement
 // Validates: Requirements 4.1

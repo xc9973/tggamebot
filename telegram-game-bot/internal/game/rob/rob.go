@@ -21,12 +21,27 @@ const (
 	CooldownSeconds       = 21           // Cooldown between robbery attempts
 	ProtectionThreshold   = 3            // Consecutive robberies before protection
 	ProtectionDurationMin = 30           // Protection duration in minutes
+	
+	// Outcome chances (must sum to 100)
+	SuccessChance       = 50  // 50% chance of successful robbery
+	FailChance          = 20  // 20% chance of failed robbery (no transfer)
+	CounterAttackChance = 30  // 30% chance of counter-attack (robber loses coins)
+)
+
+// RobOutcome represents the outcome type of a robbery attempt
+type RobOutcome int
+
+const (
+	OutcomeSuccess       RobOutcome = iota // Robber successfully steals coins
+	OutcomeFail                            // Robbery failed, no coins transferred
+	OutcomeCounterAttack                   // Victim counter-attacks, robber loses coins
 )
 
 // Transaction types for robbery
 const (
-	TxTypeRob    = "rob"    // Robber gains coins
-	TxTypeRobbed = "robbed" // Victim loses coins
+	TxTypeRob           = "rob"           // Robber gains coins
+	TxTypeRobbed        = "robbed"        // Victim loses coins
+	TxTypeCounterAttack = "counterattack" // Counter-attack (robber loses coins)
 )
 
 // Errors for rob game
@@ -47,6 +62,7 @@ type ProtectionState struct {
 // RobResult contains the result of a robbery attempt
 type RobResult struct {
 	Success     bool
+	Outcome     RobOutcome // The outcome type
 	Amount      int64
 	RobberName  string
 	VictimName  string
@@ -84,6 +100,18 @@ func NewRobGame(
 // GenerateAmount generates a random robbery amount between MinRobAmount and MaxRobAmount
 func GenerateAmount() int64 {
 	return int64(rand.Intn(MaxRobAmount-MinRobAmount+1) + MinRobAmount)
+}
+
+// DetermineOutcome randomly determines the outcome of a robbery attempt
+// Returns: OutcomeSuccess (50%), OutcomeFail (20%), or OutcomeCounterAttack (30%)
+func DetermineOutcome() RobOutcome {
+	roll := rand.Intn(100) // 0-99
+	if roll < SuccessChance {
+		return OutcomeSuccess
+	} else if roll < SuccessChance+FailChance {
+		return OutcomeFail
+	}
+	return OutcomeCounterAttack
 }
 
 // GetCooldown returns the remaining cooldown time for a robber
@@ -173,88 +201,166 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 	g.userLock.Lock(secondID)
 	defer g.userLock.Unlock(secondID)
 
-	// Get victim's balance
+	// Get both users' balances
 	victim, err := g.userRepo.GetByID(ctx, victimID)
 	if err != nil {
 		return nil, fmt.Errorf("获取目标用户失败: %w", err)
 	}
 
-	if victim.Balance <= 0 {
-		return &RobResult{
-			Success: false,
-			Message: "目标用户余额为0，无法打劫",
-		}, nil
-	}
-
-	// Generate robbery amount
-	amount := GenerateAmount()
-	// Cap at victim's balance
-	if amount > victim.Balance {
-		amount = victim.Balance
-	}
-
-	// Transfer coins: deduct from victim
-	_, err = g.userRepo.UpdateBalance(ctx, victimID, -amount)
+	robber, err := g.userRepo.GetByID(ctx, robberID)
 	if err != nil {
-		return nil, fmt.Errorf("扣除目标用户余额失败: %w", err)
+		return nil, fmt.Errorf("获取打劫者信息失败: %w", err)
 	}
 
-	// Transfer coins: add to robber
-	robber, err := g.userRepo.UpdateBalance(ctx, robberID, amount)
-	if err != nil {
-		// Try to rollback victim's balance
-		g.userRepo.UpdateBalance(ctx, victimID, amount)
-		return nil, fmt.Errorf("增加打劫者余额失败: %w", err)
-	}
-
-	// Record transactions
-	robDesc := fmt.Sprintf("打劫 %s 获得 %d 金币", victimName, amount)
-	g.txRepo.Create(ctx, robberID, amount, TxTypeRob, &robDesc)
-
-	robbedDesc := fmt.Sprintf("被 %s 打劫损失 %d 金币", robberName, amount)
-	g.txRepo.Create(ctx, victimID, -amount, TxTypeRobbed, &robbedDesc)
-
-	// Update cooldown
+	// Update cooldown first (regardless of outcome)
 	g.mu.Lock()
 	g.cooldowns[robberID] = time.Now()
-
-	// Update victim's protection state
-	state, ok := g.protection[victimID]
-	if !ok {
-		state = &ProtectionState{}
-		g.protection[victimID] = state
-	}
-
-	// Check if protection has expired, reset count if so
-	if time.Now().After(state.ProtectedUntil) && state.ConsecutiveCount > 0 {
-		state.ConsecutiveCount = 0
-	}
-
-	state.ConsecutiveCount++
-
-	// Activate protection if threshold reached
-	protectionActivated := false
-	if state.ConsecutiveCount >= ProtectionThreshold {
-		state.ProtectedUntil = time.Now().Add(time.Duration(ProtectionDurationMin) * time.Minute)
-		state.ConsecutiveCount = 0 // Reset after protection activates
-		protectionActivated = true
-	}
 	g.mu.Unlock()
 
-	// Build result message
-	msg := fmt.Sprintf("🔫 %s 打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
-	if protectionActivated {
-		msg += fmt.Sprintf("\n🛡️ %s 触发保护期 %d 分钟", victimName, ProtectionDurationMin)
-	}
+	// Determine outcome
+	outcome := DetermineOutcome()
 
-	return &RobResult{
-		Success:    true,
-		Amount:     amount,
-		RobberName: robberName,
-		VictimName: victimName,
-		NewBalance: robber.Balance,
-		Message:    msg,
-	}, nil
+	switch outcome {
+	case OutcomeFail:
+		// Robbery failed - no coins transferred
+		return &RobResult{
+			Success:    false,
+			Outcome:    OutcomeFail,
+			Amount:     0,
+			RobberName: robberName,
+			VictimName: victimName,
+			NewBalance: robber.Balance,
+			Message:    fmt.Sprintf("😅 %s 打劫 %s 失败了！空手而归...", robberName, victimName),
+		}, nil
+
+	case OutcomeCounterAttack:
+		// Counter-attack - robber loses coins to victim
+		amount := GenerateAmount()
+		// Cap at robber's balance (can't go negative)
+		if amount > robber.Balance {
+			amount = robber.Balance
+		}
+		
+		if amount <= 0 {
+			return &RobResult{
+				Success:    false,
+				Outcome:    OutcomeCounterAttack,
+				Amount:     0,
+				RobberName: robberName,
+				VictimName: victimName,
+				NewBalance: robber.Balance,
+				Message:    fmt.Sprintf("⚔️ %s 被 %s 反击了！但你身无分文，逃过一劫...", robberName, victimName),
+			}, nil
+		}
+
+		// Transfer coins: deduct from robber
+		newRobber, err := g.userRepo.UpdateBalance(ctx, robberID, -amount)
+		if err != nil {
+			return nil, fmt.Errorf("扣除打劫者余额失败: %w", err)
+		}
+
+		// Transfer coins: add to victim
+		_, err = g.userRepo.UpdateBalance(ctx, victimID, amount)
+		if err != nil {
+			// Try to rollback robber's balance
+			g.userRepo.UpdateBalance(ctx, robberID, amount)
+			return nil, fmt.Errorf("增加目标用户余额失败: %w", err)
+		}
+
+		// Record transactions
+		counterDesc := fmt.Sprintf("打劫 %s 被反击损失 %d 金币", victimName, amount)
+		g.txRepo.Create(ctx, robberID, -amount, TxTypeCounterAttack, &counterDesc)
+
+		victimGainDesc := fmt.Sprintf("反击 %s 获得 %d 金币", robberName, amount)
+		g.txRepo.Create(ctx, victimID, amount, TxTypeRob, &victimGainDesc)
+
+		return &RobResult{
+			Success:    false,
+			Outcome:    OutcomeCounterAttack,
+			Amount:     amount,
+			RobberName: robberName,
+			VictimName: victimName,
+			NewBalance: newRobber.Balance,
+			Message:    fmt.Sprintf("⚔️ %s 打劫 %s 被反击！损失 %d 金币！", robberName, victimName, amount),
+		}, nil
+
+	default: // OutcomeSuccess
+		// Successful robbery
+		if victim.Balance <= 0 {
+			return &RobResult{
+				Success: false,
+				Outcome: OutcomeFail,
+				Message: "目标用户余额为0，无法打劫",
+			}, nil
+		}
+
+		amount := GenerateAmount()
+		// Cap at victim's balance
+		if amount > victim.Balance {
+			amount = victim.Balance
+		}
+
+		// Transfer coins: deduct from victim
+		_, err = g.userRepo.UpdateBalance(ctx, victimID, -amount)
+		if err != nil {
+			return nil, fmt.Errorf("扣除目标用户余额失败: %w", err)
+		}
+
+		// Transfer coins: add to robber
+		newRobber, err := g.userRepo.UpdateBalance(ctx, robberID, amount)
+		if err != nil {
+			// Try to rollback victim's balance
+			g.userRepo.UpdateBalance(ctx, victimID, amount)
+			return nil, fmt.Errorf("增加打劫者余额失败: %w", err)
+		}
+
+		// Record transactions
+		robDesc := fmt.Sprintf("打劫 %s 获得 %d 金币", victimName, amount)
+		g.txRepo.Create(ctx, robberID, amount, TxTypeRob, &robDesc)
+
+		robbedDesc := fmt.Sprintf("被 %s 打劫损失 %d 金币", robberName, amount)
+		g.txRepo.Create(ctx, victimID, -amount, TxTypeRobbed, &robbedDesc)
+
+		// Update victim's protection state
+		g.mu.Lock()
+		state, ok := g.protection[victimID]
+		if !ok {
+			state = &ProtectionState{}
+			g.protection[victimID] = state
+		}
+
+		// Check if protection has expired, reset count if so
+		if time.Now().After(state.ProtectedUntil) && state.ConsecutiveCount > 0 {
+			state.ConsecutiveCount = 0
+		}
+
+		state.ConsecutiveCount++
+
+		// Activate protection if threshold reached
+		protectionActivated := false
+		if state.ConsecutiveCount >= ProtectionThreshold {
+			state.ProtectedUntil = time.Now().Add(time.Duration(ProtectionDurationMin) * time.Minute)
+			state.ConsecutiveCount = 0 // Reset after protection activates
+			protectionActivated = true
+		}
+		g.mu.Unlock()
+
+		// Build result message
+		msg := fmt.Sprintf("🔫 %s 打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
+		if protectionActivated {
+			msg += fmt.Sprintf("\n🛡️ %s 触发保护期 %d 分钟", victimName, ProtectionDurationMin)
+		}
+
+		return &RobResult{
+			Success:    true,
+			Outcome:    OutcomeSuccess,
+			Amount:     amount,
+			RobberName: robberName,
+			VictimName: victimName,
+			NewBalance: newRobber.Balance,
+			Message:    msg,
+		}, nil
+	}
 }
 
 // ResetProtection resets a user's protection state (for testing)
