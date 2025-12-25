@@ -49,6 +49,11 @@ func WhitelistMiddleware(cfg *config.Config) tele.MiddlewareFunc {
 
 			// Check if it's a private chat
 			if chat.Type == tele.ChatPrivate {
+				// Admins always allowed in private chat
+				if cfg.IsAdmin(sender.ID) {
+					return next(c)
+				}
+				
 				// If whitelist is configured, only allow users from whitelisted groups
 				if len(cfg.Whitelist.Chats) > 0 {
 					if !IsPrivateUserAllowed(sender.ID) {
