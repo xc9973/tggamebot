@@ -24,7 +24,7 @@ func TestSicBoBetAccumulationProperty(t *testing.T) {
 		userID := rapid.Int64Range(1, 1000000).Draw(t, "userID")
 
 		// Start a session
-		err := game.StartSession(ctx, chatID, 300) // 5 minutes to ensure betting phase is active
+		err := game.StartSession(ctx, chatID, userID, 300) // 5 minutes to ensure betting phase is active
 		if err != nil {
 			t.Fatalf("Failed to start session: %v", err)
 		}
@@ -92,7 +92,7 @@ func TestSicBoBetAccumulationMultipleOptionsProperty(t *testing.T) {
 		chatID := rapid.Int64Range(1, 1000000).Draw(t, "chatID")
 		userID := rapid.Int64Range(1, 1000000).Draw(t, "userID")
 
-		err := game.StartSession(ctx, chatID, 300)
+		err := game.StartSession(ctx, chatID, userID, 300)
 		if err != nil {
 			t.Fatalf("Failed to start session: %v", err)
 		}
@@ -178,7 +178,7 @@ func TestSicBoBetAccumulationMultipleUsersProperty(t *testing.T) {
 		userID1 := rapid.Int64Range(1, 500000).Draw(t, "userID1")
 		userID2 := rapid.Int64Range(500001, 1000000).Draw(t, "userID2")
 
-		err := game.StartSession(ctx, chatID, 300)
+		err := game.StartSession(ctx, chatID, userID1, 300)
 		if err != nil {
 			t.Fatalf("Failed to start session: %v", err)
 		}

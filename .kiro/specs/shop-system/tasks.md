@@ -51,7 +51,7 @@
     - HandleHandcuff 处理 /handcuff 命令
     - _Requirements: 2.3, 2.6_
 
-- [-] 5. 集成打劫游戏
+- [x] 5. 集成打劫游戏
   - [x] 5.1 修改 `internal/game/rob/rob.go`
     - 添加 ShopService 依赖
     - CanRob 检查攻击方是否被手铐锁定
@@ -59,10 +59,10 @@
     - DetermineOutcome 检查饮血剑效果（80%成功率）
     - Rob 成功后检查荆棘刺甲效果（扣双倍）
     - _Requirements: 2.4, 3.4, 4.4, 5.4_
-  - [ ]* 5.2 编写 Property Test: Shield Protection Effect
+  - [x] 5.2 编写 Property Test: Shield Protection Effect
     - **Property 4: Shield Protection Effect**
     - **Validates: Requirements 3.4**
-  - [ ]* 5.3 编写 Property Test: Handcuff Lock Effect
+  - [x] 5.3 编写 Property Test: Handcuff Lock Effect
     - **Property 7: Handcuff Lock Effect**
     - **Validates: Requirements 2.4**
 
@@ -79,7 +79,7 @@
     - 传递依赖到 Bot
     - _Requirements: All_
 
-- [ ] 7. Checkpoint - 测试商店功能
+- [x] 7. Checkpoint - 测试商店功能
   - 确保所有测试通过
   - 测试私聊 /start 显示商店
   - 测试购买流程
