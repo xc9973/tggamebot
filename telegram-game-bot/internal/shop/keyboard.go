@@ -145,7 +145,7 @@ func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 
 // FormatShopMessage creates the shop welcome message (main menu)
 func FormatShopMessage(balance int64) string {
-	msg := fmt.Sprintf("🏪 游戏商店\n💰 余额: %d 金币\n\n", balance)
+	msg := fmt.Sprintf("🏪 游戏商店\n余额: %d 金币\n\n", balance)
 	msg += "欢迎来到游戏商店！\n"
 	msg += "请选择要查看的内容：\n\n"
 	msg += "🎒 背包 - 查看已购买的道具\n"
@@ -155,7 +155,7 @@ func FormatShopMessage(balance int64) string {
 
 // FormatGoodsCategoryMessage creates the goods category message
 func FormatGoodsCategoryMessage(balance int64) string {
-	msg := fmt.Sprintf("🛒 商品分类\n💰 余额: %d 金币\n\n", balance)
+	msg := fmt.Sprintf("🛒 商品分类\n余额: %d 金币\n\n", balance)
 	msg += "请选择道具类型：\n\n"
 	msg += "⚔️ 攻击道具 - 用于打劫的道具\n"
 	msg += "🛡️ 防御道具 - 用于防御的道具"
@@ -164,14 +164,14 @@ func FormatGoodsCategoryMessage(balance int64) string {
 
 // FormatAttackItemsMessage creates the attack items list message
 func FormatAttackItemsMessage(balance int64) string {
-	msg := fmt.Sprintf("⚔️ 攻击道具\n💰 余额: %d 金币\n\n", balance)
+	msg := fmt.Sprintf("⚔️ 攻击道具\n余额: %d 金币\n\n", balance)
 	
 	items := GetItemsByCategory(CategoryAttack)
 	for _, item := range items {
-		msg += fmt.Sprintf("%s %s - %d💰\n", item.Emoji, item.Name, item.Price)
-		msg += fmt.Sprintf("   📦 %d次", item.UseCount)
+		msg += fmt.Sprintf("%s %s - %d金币\n", item.Emoji, item.Name, item.Price)
+		msg += fmt.Sprintf("   使用次数: %d次", item.UseCount)
 		if item.HasDailyLimit() {
-			msg += fmt.Sprintf(" | 🔒 限购%d/日", item.DailyLimit)
+			msg += fmt.Sprintf(" | 限购%d/日", item.DailyLimit)
 		}
 		msg += "\n"
 	}
@@ -182,7 +182,7 @@ func FormatAttackItemsMessage(balance int64) string {
 
 // FormatDefenseItemsMessage creates the defense items list message
 func FormatDefenseItemsMessage(balance int64) string {
-	msg := fmt.Sprintf("🛡️ 防御道具\n💰 余额: %d 金币\n\n", balance)
+	msg := fmt.Sprintf("🛡️ 防御道具\n余额: %d 金币\n\n", balance)
 	
 	// Get defense and passive items
 	defenseItems := GetItemsByCategory(CategoryDefense)
@@ -190,10 +190,10 @@ func FormatDefenseItemsMessage(balance int64) string {
 	items := append(defenseItems, passiveItems...)
 	
 	for _, item := range items {
-		msg += fmt.Sprintf("%s %s - %d💰\n", item.Emoji, item.Name, item.Price)
-		msg += fmt.Sprintf("   📦 %d次", item.UseCount)
+		msg += fmt.Sprintf("%s %s - %d金币\n", item.Emoji, item.Name, item.Price)
+		msg += fmt.Sprintf("   使用次数: %d次", item.UseCount)
 		if item.HasDailyLimit() {
-			msg += fmt.Sprintf(" | 🔒 限购%d/日", item.DailyLimit)
+			msg += fmt.Sprintf(" | 限购%d/日", item.DailyLimit)
 		}
 		msg += "\n"
 	}
@@ -206,15 +206,15 @@ func FormatDefenseItemsMessage(balance int64) string {
 // Requirements: 1.2 - Show item name, price, use count, and daily limit info
 func FormatItemDetail(item ItemConfig, balance int64) string {
 	msg := fmt.Sprintf("%s %s\n\n", item.Emoji, item.Name)
-	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
-	msg += fmt.Sprintf("📦 使用次数: %d次\n", item.UseCount)
+	msg += fmt.Sprintf("价格: %d 金币\n", item.Price)
+	msg += fmt.Sprintf("使用次数: %d次\n", item.UseCount)
 
 	if item.HasDailyLimit() {
-		msg += fmt.Sprintf("🔒 每日限购: %d次\n", item.DailyLimit)
+		msg += fmt.Sprintf("每日限购: %d次\n", item.DailyLimit)
 	}
 
-	msg += fmt.Sprintf("📝 %s\n\n", item.Description)
-	msg += fmt.Sprintf("💰 你的余额: %d 金币\n\n", balance)
+	msg += fmt.Sprintf("说明: %s\n\n", item.Description)
+	msg += fmt.Sprintf("你的余额: %d 金币\n\n", balance)
 
 	if balance < item.Price {
 		msg += "❌ 余额不足"
@@ -229,15 +229,15 @@ func FormatItemDetail(item ItemConfig, balance int64) string {
 // Requirements: 1.2, 2.9, 3.8, 7.8 - Show daily limit and current purchase count
 func FormatItemDetailWithDailyCount(item ItemConfig, balance int64, dailyCount int) string {
 	msg := fmt.Sprintf("%s %s\n\n", item.Emoji, item.Name)
-	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
-	msg += fmt.Sprintf("📦 使用次数: %d次\n", item.UseCount)
+	msg += fmt.Sprintf("价格: %d 金币\n", item.Price)
+	msg += fmt.Sprintf("使用次数: %d次\n", item.UseCount)
 
 	if item.HasDailyLimit() {
-		msg += fmt.Sprintf("🔒 每日限购: %d/%d次\n", dailyCount, item.DailyLimit)
+		msg += fmt.Sprintf("每日限购: %d/%d次\n", dailyCount, item.DailyLimit)
 	}
 
-	msg += fmt.Sprintf("📝 %s\n\n", item.Description)
-	msg += fmt.Sprintf("💰 你的余额: %d 金币\n\n", balance)
+	msg += fmt.Sprintf("说明: %s\n\n", item.Description)
+	msg += fmt.Sprintf("你的余额: %d 金币\n\n", balance)
 
 	// Check daily limit first
 	if item.HasDailyLimit() && dailyCount >= item.DailyLimit {
@@ -255,12 +255,12 @@ func FormatItemDetailWithDailyCount(item ItemConfig, balance int64, dailyCount i
 // Requirements: 11.2 - Show item name, quantity (for Handcuffs), and remaining use count (for other items)
 func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectInfo) string {
 	msg := "🎒 我的背包\n\n"
-	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
+	msg += fmt.Sprintf("余额: %d 金币\n\n", balance)
 	
 	if handcuffCount == 0 && len(effects) == 0 {
-		msg += "📭 背包空空如也~"
+		msg += "背包空空如也~"
 	} else {
-		msg += "📦 道具列表:\n"
+		msg += "道具列表:\n"
 		msg += "─────────────\n"
 		
 		if handcuffCount > 0 {
