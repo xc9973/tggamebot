@@ -85,16 +85,15 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		data = strings.TrimPrefix(data, "\f")
 	}
 
-	// Handle refresh
+	// Handle refresh - edit caption only
 	if data == shop.CallbackShopRefresh {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
-		photo.Caption = shop.FormatShopMessage(balance)
+		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(photo, markup)
+		return c.EditCaption(caption, markup)
 	}
 
-	// Handle bag view
+	// Handle bag view - edit caption
 	if data == shop.CallbackShopBag {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
 		inventory, err := h.shopService.GetUserInventory(ctx, sender.ID)
@@ -112,17 +111,17 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			})
 		}
 
-		msg := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
+		caption := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
 		markup := shop.BuildBagPanel()
-		return c.Edit(msg, markup)
+		return c.EditCaption(caption, markup)
 	}
 
-	// Handle cancel
+	// Handle cancel - back to shop
 	if data == shop.CallbackShopCancel {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatShopMessage(balance)
+		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(msg, markup)
+		return c.EditCaption(caption, markup)
 	}
 
 	// Handle item selection
@@ -136,9 +135,9 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		}
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatItemDetail(item, balance)
+		caption := shop.FormatItemDetail(item, balance)
 		markup := shop.BuildConfirmPanel(itemType)
-		return c.Edit(msg, markup)
+		return c.EditCaption(caption, markup)
 	}
 
 	// Handle purchase
@@ -172,9 +171,9 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		})
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatShopMessage(balance)
+		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(msg, markup)
+		return c.EditCaption(caption, markup)
 	}
 
 	return nil
