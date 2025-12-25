@@ -14,9 +14,6 @@ import (
 	"telegram-game-bot/internal/shop"
 )
 
-// Shop banner image file ID
-const ShopBannerFileID = "AgACAgUAAxkBAAIXnWlMyQYxJ7Pj1TY_YkM0sv0VCVDkAAKDC2sbh7RoVmNP_zn_fF-lAQADAgADeQADNgQ"
-
 // ShopHandler handles shop-related commands
 type ShopHandler struct {
 	shopService    *service.ShopService
@@ -62,11 +59,10 @@ func (h *ShopHandler) HandleShopStart(c tele.Context) error {
 		balance = 0
 	}
 
-	// Send shop panel with image
-	photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
-	photo.Caption = shop.FormatShopMessage(balance)
+	// Send shop panel (text only for stable editing)
+	msg := shop.FormatShopMessage(balance)
 	markup := shop.BuildShopPanel()
-	return c.Send(photo, markup)
+	return c.Send(msg, markup)
 }
 
 // HandleShopCallback handles shop button callbacks
@@ -85,15 +81,15 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		data = strings.TrimPrefix(data, "\f")
 	}
 
-	// Handle refresh - edit caption only
+	// Handle refresh
 	if data == shop.CallbackShopRefresh {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
+		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.EditCaption(caption, markup)
+		return c.Edit(msg, markup)
 	}
 
-	// Handle bag view - edit caption
+	// Handle bag view
 	if data == shop.CallbackShopBag {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
 		inventory, err := h.shopService.GetUserInventory(ctx, sender.ID)
@@ -111,17 +107,17 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			})
 		}
 
-		caption := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
+		msg := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
 		markup := shop.BuildBagPanel()
-		return c.EditCaption(caption, markup)
+		return c.Edit(msg, markup)
 	}
 
 	// Handle cancel - back to shop
 	if data == shop.CallbackShopCancel {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
+		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.EditCaption(caption, markup)
+		return c.Edit(msg, markup)
 	}
 
 	// Handle item selection
@@ -135,9 +131,9 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		}
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatItemDetail(item, balance)
+		msg := shop.FormatItemDetail(item, balance)
 		markup := shop.BuildConfirmPanel(itemType)
-		return c.EditCaption(caption, markup)
+		return c.Edit(msg, markup)
 	}
 
 	// Handle purchase
@@ -171,9 +167,9 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		})
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
+		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.EditCaption(caption, markup)
+		return c.Edit(msg, markup)
 	}
 
 	return nil
