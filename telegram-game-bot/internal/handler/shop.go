@@ -14,6 +14,9 @@ import (
 	"telegram-game-bot/internal/shop"
 )
 
+// Shop banner image file ID
+const ShopBannerFileID = "AgACAgUAAxkBAAIXnWlMyQYxJ7Pj1TY_YkM0sv0VCVDkAAKDC2sbh7RoVmNP_zn_fF-lAQADAgADeQADNgQ"
+
 // ShopHandler handles shop-related commands
 type ShopHandler struct {
 	shopService    *service.ShopService
@@ -59,10 +62,11 @@ func (h *ShopHandler) HandleShopStart(c tele.Context) error {
 		balance = 0
 	}
 
-	// Send shop panel
-	msg := shop.FormatShopMessage(balance)
+	// Send shop panel with image
+	photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
+	photo.Caption = shop.FormatShopMessage(balance)
 	markup := shop.BuildShopPanel()
-	return c.Send(msg, markup)
+	return c.Send(photo, markup)
 }
 
 // HandleShopCallback handles shop button callbacks
@@ -84,9 +88,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	// Handle refresh
 	if data == shop.CallbackShopRefresh {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatShopMessage(balance)
+		photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
+		photo.Caption = shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(msg, markup)
+		return c.Edit(photo, markup)
 	}
 
 	// Handle bag view
