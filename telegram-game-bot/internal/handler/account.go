@@ -213,7 +213,7 @@ func (h *AccountHandler) HandleTop(c tele.Context) error {
 			displayName = fmt.Sprintf("User%d", user.TelegramID)
 		}
 
-		msg += fmt.Sprintf("%s @%s: %d\n", rank, displayName, user.Balance)
+		msg += fmt.Sprintf("%s %s: %d\n", rank, displayName, user.Balance)
 	}
 
 	msg += "━━━━━━━━━━━━━━━"
