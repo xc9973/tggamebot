@@ -6,6 +6,7 @@ package bot
 
 import (
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v3"
@@ -19,6 +20,13 @@ import (
 var (
 	privateUserCache = make(map[int64]bool)
 	privateUserMu    sync.RWMutex
+)
+
+// Rate limiting for private chat
+var (
+	rateLimitCache   = make(map[int64]time.Time) // userID -> last request time
+	rateLimitMu      sync.RWMutex
+	rateLimitWindow  = 1 * time.Second // Minimum interval between requests
 )
 
 // AllowPrivateUser marks a user as allowed to use private chat.
@@ -35,6 +43,22 @@ func IsPrivateUserAllowed(userID int64) bool {
 	return privateUserCache[userID]
 }
 
+// checkRateLimit checks if user is rate limited, returns true if allowed
+func checkRateLimit(userID int64) bool {
+	rateLimitMu.Lock()
+	defer rateLimitMu.Unlock()
+	
+	now := time.Now()
+	lastTime, exists := rateLimitCache[userID]
+	
+	if exists && now.Sub(lastTime) < rateLimitWindow {
+		return false // Rate limited
+	}
+	
+	rateLimitCache[userID] = now
+	return true
+}
+
 // WhitelistMiddleware creates a middleware that checks if the chat is whitelisted.
 // Requirements: 7.1, 7.2
 func WhitelistMiddleware(cfg *config.Config) tele.MiddlewareFunc {
@@ -49,9 +73,17 @@ func WhitelistMiddleware(cfg *config.Config) tele.MiddlewareFunc {
 
 			// Check if it's a private chat
 			if chat.Type == tele.ChatPrivate {
-				// Admins always allowed in private chat
+				// Admins always allowed in private chat (no rate limit)
 				if cfg.IsAdmin(sender.ID) {
 					return next(c)
+				}
+				
+				// Rate limit check for private chat
+				if !checkRateLimit(sender.ID) {
+					log.Debug().
+						Int64("user_id", sender.ID).
+						Msg("Rate limited private chat request")
+					return nil // Silently ignore
 				}
 				
 				// If whitelist is configured, only allow users from whitelisted groups
