@@ -64,34 +64,34 @@ func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 
 // FormatShopMessage creates the shop welcome message with ASCII art header
 func FormatShopMessage(balance int64) string {
-	msg := "🏪 ═══════════════ 🏪\n"
-	msg += "       💎 商 店 💎\n"
-	msg += "🏪 ═══════════════ 🏪\n\n"
+	msg := "┏━━━━━━━━━━━━━━━━┓\n"
+	msg += "┃    🛒 游戏商店    ┃\n"
+	msg += "┗━━━━━━━━━━━━━━━━┛\n\n"
 	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
-	msg += "点击下方按钮购买道具"
+	msg += "👇 选择要购买的道具"
 	return msg
 }
 
 // FormatItemDetail creates the item detail message
 func FormatItemDetail(item ItemConfig, balance int64) string {
-	msg := "🏪 ═══════════════ 🏪\n"
-	msg += fmt.Sprintf("    %s %s\n", item.Emoji, item.Name)
-	msg += "🏪 ═══════════════ 🏪\n\n"
+	msg := "┏━━━━━━━━━━━━━━━━┓\n"
+	msg += fmt.Sprintf("┃  %s %s\n", item.Emoji, item.Name)
+	msg += "┗━━━━━━━━━━━━━━━━┛\n\n"
 	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
 	
 	if item.IsTimeBased() {
-		msg += fmt.Sprintf("⏱️ 时效: %s\n", FormatDuration(item.Duration))
+		msg += fmt.Sprintf("⏱ 时效: %s\n", FormatDuration(item.Duration))
 	} else {
-		msg += "⏱️ 类型: 一次性使用\n"
+		msg += "📦 类型: 一次性道具\n"
 	}
 	
-	msg += fmt.Sprintf("📝 效果: %s\n\n", item.Description)
-	msg += fmt.Sprintf("💰 你的余额: %d 金币\n", balance)
+	msg += fmt.Sprintf("📝 %s\n\n", item.Description)
+	msg += fmt.Sprintf("💰 你的余额: %d 金币\n\n", balance)
 	
 	if balance < item.Price {
-		msg += "❌ 余额不足！"
+		msg += "❌ 余额不足"
 	} else {
-		msg += "确认购买吗？"
+		msg += "✅ 确认购买？"
 	}
 	
 	return msg
@@ -99,18 +99,19 @@ func FormatItemDetail(item ItemConfig, balance int64) string {
 
 // FormatInventoryMessage creates the inventory display message
 func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectInfo) string {
-	msg := "🎒 ═══════════════ 🎒\n"
-	msg += "       📦 背 包 📦\n"
-	msg += "🎒 ═══════════════ 🎒\n\n"
+	msg := "┏━━━━━━━━━━━━━━━━┓\n"
+	msg += "┃    🎒 我的背包    ┃\n"
+	msg += "┗━━━━━━━━━━━━━━━━┛\n\n"
 	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
 	
 	if handcuffCount == 0 && len(effects) == 0 {
-		msg += "📦 暂无道具"
+		msg += "📭 背包空空如也~"
 	} else {
+		msg += "📦 道具列表:\n"
 		if handcuffCount > 0 {
 			item, _ := GetItem(ItemHandcuff)
-			msg += fmt.Sprintf("%s %s x%d\n", item.Emoji, item.Name, handcuffCount)
-			msg += "使用: 回复目标消息发送 /handcuff\n"
+			msg += fmt.Sprintf("  • %s %s ×%d\n", item.Emoji, item.Name, handcuffCount)
+			msg += "    用法: 回复消息 /handcuff\n"
 		}
 		
 		for _, effect := range effects {
@@ -118,7 +119,7 @@ func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectIn
 			if !ok {
 				continue
 			}
-			msg += fmt.Sprintf("%s %s (剩余 %s)\n", item.Emoji, item.Name, effect.RemainingStr)
+			msg += fmt.Sprintf("  • %s %s (%s)\n", item.Emoji, item.Name, effect.RemainingStr)
 		}
 	}
 	
