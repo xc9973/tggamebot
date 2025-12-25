@@ -171,17 +171,23 @@ func (b *Bot) handleCallback(c tele.Context) error {
 	}
 
 	data := callback.Data
+	log.Debug().Str("raw_data", data).Msg("Callback received")
+	
 	// Telebot v3 may add a \f prefix to callback data
 	if strings.HasPrefix(data, "\f") {
 		data = strings.TrimPrefix(data, "\f")
 	}
+	
+	log.Debug().Str("processed_data", data).Msg("Callback data after trim")
 
 	// Route shop callbacks
 	if strings.HasPrefix(data, "shop_") {
+		log.Debug().Msg("Routing to shop handler")
 		return b.shopHandler.HandleShopCallback(c)
 	}
 
 	// Route sicbo callbacks
+	log.Debug().Msg("Routing to sicbo handler")
 	return b.gameHandler.HandleSicBoCallback(c)
 }
 
