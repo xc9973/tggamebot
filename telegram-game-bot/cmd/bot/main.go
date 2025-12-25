@@ -57,6 +57,7 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool.Pool)
 	txRepo := repository.NewTransactionRepository(dbPool.Pool)
+	inventoryRepo := repository.NewInventoryRepository(dbPool.Pool)
 
 	// Initialize services
 	accountService := service.NewAccountService(
@@ -99,6 +100,12 @@ func main() {
 	// Initialize Rob game
 	robGame := rob.NewRobGame(userRepo, txRepo, userLock)
 
+	// Initialize Shop service
+	shopService := service.NewShopService(userRepo, txRepo, inventoryRepo, userLock)
+
+	// Connect shop service to rob game for item effects
+	robGame.SetItemChecker(shopService)
+
 	log.Info().
 		Int("game_count", gameRegistry.Count()).
 		Strs("games", gameRegistry.Commands()).
@@ -110,6 +117,7 @@ func main() {
 		AccountService:  accountService,
 		TransferService: transferService,
 		RankingService:  rankingService,
+		ShopService:     shopService,
 		GameRegistry:    gameRegistry,
 		SicBoGame:       sicboGame,
 		RobGame:         robGame,
@@ -196,6 +204,54 @@ func runMigrations(ctx context.Context, pool *db.Pool) error {
 		return err
 	}
 	log.Info().Msg("Migration 3: daily_game_stats view created")
+
+	// Migration 4: Create shop system tables
+	// user_items - stores stackable items like handcuffs
+	_, err = pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS user_items (
+			user_id BIGINT NOT NULL,
+			item_type VARCHAR(50) NOT NULL,
+			quantity INT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (user_id, item_type)
+		);
+	`)
+	if err != nil {
+		return err
+	}
+	log.Info().Msg("Migration 4a: user_items table created")
+
+	// user_effects - stores time-based effects (shield, thorn armor, bloodthirst sword)
+	_, err = pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS user_effects (
+			id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			effect_type VARCHAR(50) NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_user_effects_user ON user_effects(user_id);
+		CREATE INDEX IF NOT EXISTS idx_user_effects_expires ON user_effects(expires_at);
+	`)
+	if err != nil {
+		return err
+	}
+	log.Info().Msg("Migration 4b: user_effects table created")
+
+	// handcuff_locks - stores users locked by handcuffs
+	_, err = pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS handcuff_locks (
+			target_id BIGINT PRIMARY KEY,
+			locked_by BIGINT NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS idx_handcuff_locks_expires ON handcuff_locks(expires_at);
+	`)
+	if err != nil {
+		return err
+	}
+	log.Info().Msg("Migration 4c: handcuff_locks table created")
 
 	log.Info().Msg("All migrations completed successfully")
 	return nil

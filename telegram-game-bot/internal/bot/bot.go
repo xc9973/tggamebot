@@ -5,6 +5,7 @@ package bot
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -26,6 +27,7 @@ type Bot struct {
 	accountService  *service.AccountService
 	transferService *service.TransferService
 	rankingService  *service.RankingService
+	shopService     *service.ShopService
 	gameRegistry    *game.Registry
 	sicboGame       *sicbo.SicBoGame
 	robGame         *rob.RobGame
@@ -37,6 +39,7 @@ type Bot struct {
 	adminHandler    *handler.AdminHandler
 	rankingHandler  *handler.RankingHandler
 	gameHandler     *handler.GameHandler
+	shopHandler     *handler.ShopHandler
 }
 
 // Dependencies holds all the dependencies needed by the bot handlers.
@@ -45,6 +48,7 @@ type Dependencies struct {
 	AccountService  *service.AccountService
 	TransferService *service.TransferService
 	RankingService  *service.RankingService
+	ShopService     *service.ShopService
 	GameRegistry    *game.Registry
 	SicBoGame       *sicbo.SicBoGame
 	RobGame         *rob.RobGame
@@ -74,6 +78,7 @@ func New(deps *Dependencies) (*Bot, error) {
 		accountService:  deps.AccountService,
 		transferService: deps.TransferService,
 		rankingService:  deps.RankingService,
+		shopService:     deps.ShopService,
 		gameRegistry:    deps.GameRegistry,
 		sicboGame:       deps.SicBoGame,
 		robGame:         deps.RobGame,
@@ -86,6 +91,7 @@ func New(deps *Dependencies) (*Bot, error) {
 	b.adminHandler = handler.NewAdminHandler(deps.AccountService, deps.UserLock)
 	b.rankingHandler = handler.NewRankingHandler(deps.RankingService)
 	b.gameHandler = handler.NewGameHandler(deps.Config, deps.AccountService, deps.GameRegistry, deps.SicBoGame, deps.RobGame, deps.UserLock)
+	b.shopHandler = handler.NewShopHandler(deps.ShopService, deps.AccountService)
 
 	// Register middleware
 	b.registerMiddleware()
@@ -108,7 +114,7 @@ func (b *Bot) registerMiddleware() {
 // registerHandlers registers all command and callback handlers.
 func (b *Bot) registerHandlers() {
 	// Account handlers
-	b.bot.Handle("/start", b.accountHandler.HandleStart)
+	b.bot.Handle("/start", b.handleStart) // Custom handler to route private/group
 	b.bot.Handle("/balance", b.accountHandler.HandleBalance)
 	b.bot.Handle("/my", b.accountHandler.HandleMy)
 	b.bot.Handle("/daily", b.accountHandler.HandleDaily)
@@ -140,8 +146,39 @@ func (b *Bot) registerHandlers() {
 	// Rob game handler
 	b.bot.Handle("/dajie", b.gameHandler.HandleDajie)
 
-	// Generic callback handler for sicbo buttons
-	b.bot.Handle(tele.OnCallback, b.gameHandler.HandleSicBoCallback)
+	// Shop handlers
+	b.bot.Handle("/bag", b.shopHandler.HandleBag)
+	b.bot.Handle("/handcuff", b.shopHandler.HandleHandcuff)
+
+	// Generic callback handler for sicbo and shop buttons
+	b.bot.Handle(tele.OnCallback, b.handleCallback)
+}
+
+// handleStart routes /start to shop (private) or account (group)
+func (b *Bot) handleStart(c tele.Context) error {
+	chat := c.Chat()
+	if chat != nil && chat.Type == tele.ChatPrivate {
+		return b.shopHandler.HandleShopStart(c)
+	}
+	return b.accountHandler.HandleStart(c)
+}
+
+// handleCallback routes callbacks to appropriate handlers
+func (b *Bot) handleCallback(c tele.Context) error {
+	callback := c.Callback()
+	if callback == nil {
+		return nil
+	}
+
+	data := callback.Data
+
+	// Route shop callbacks
+	if strings.HasPrefix(data, "shop_") {
+		return b.shopHandler.HandleShopCallback(c)
+	}
+
+	// Route sicbo callbacks
+	return b.gameHandler.HandleSicBoCallback(c)
 }
 
 // Start starts the bot polling.

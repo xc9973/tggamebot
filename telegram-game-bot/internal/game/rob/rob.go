@@ -22,11 +22,27 @@ const (
 	ProtectionThreshold   = 3            // Consecutive robberies before protection
 	ProtectionDurationMin = 30           // Protection duration in minutes
 	
-	// Outcome chances (must sum to 100)
+	// Outcome chances (must sum to 100) - default without items
 	SuccessChance       = 50  // 50% chance of successful robbery
 	FailChance          = 20  // 20% chance of failed robbery (no transfer)
 	CounterAttackChance = 30  // 30% chance of counter-attack (robber loses coins)
+	
+	// Bloodthirst sword success rate
+	BloodthirstSuccessChance = 80 // 80% success rate with bloodthirst sword
 )
+
+// ItemEffectChecker interface for checking shop item effects
+// This allows the rob game to check item effects without depending on shop service directly
+type ItemEffectChecker interface {
+	// IsHandcuffed checks if user is locked by handcuffs
+	IsHandcuffed(ctx context.Context, userID int64) (bool, time.Duration)
+	// HasShield checks if user has active shield
+	HasShield(ctx context.Context, userID int64) bool
+	// HasThornArmor checks if user has active thorn armor
+	HasThornArmor(ctx context.Context, userID int64) bool
+	// HasBloodthirstSword checks if user has active bloodthirst sword
+	HasBloodthirstSword(ctx context.Context, userID int64) bool
+}
 
 // RobOutcome represents the outcome type of a robbery attempt
 type RobOutcome int
@@ -72,9 +88,10 @@ type RobResult struct {
 
 // RobGame manages the robbery game logic
 type RobGame struct {
-	userRepo *repository.UserRepository
-	txRepo   *repository.TransactionRepository
-	userLock *lock.UserLock
+	userRepo    *repository.UserRepository
+	txRepo      *repository.TransactionRepository
+	userLock    *lock.UserLock
+	itemChecker ItemEffectChecker // Optional: for shop item effects
 
 	// In-memory state (resets on restart)
 	protection map[int64]*ProtectionState // victim_id -> state
@@ -97,6 +114,11 @@ func NewRobGame(
 	}
 }
 
+// SetItemChecker sets the item effect checker (called after shop service is initialized)
+func (g *RobGame) SetItemChecker(checker ItemEffectChecker) {
+	g.itemChecker = checker
+}
+
 // GenerateAmount generates a random robbery amount between MinRobAmount and MaxRobAmount
 func GenerateAmount() int64 {
 	return int64(rand.Intn(MaxRobAmount-MinRobAmount+1) + MinRobAmount)
@@ -105,10 +127,20 @@ func GenerateAmount() int64 {
 // DetermineOutcome randomly determines the outcome of a robbery attempt
 // Returns: OutcomeSuccess (50%), OutcomeFail (20%), or OutcomeCounterAttack (30%)
 func DetermineOutcome() RobOutcome {
+	return DetermineOutcomeWithRate(SuccessChance)
+}
+
+// DetermineOutcomeWithRate determines outcome with custom success rate
+func DetermineOutcomeWithRate(successRate int) RobOutcome {
 	roll := rand.Intn(100) // 0-99
-	if roll < SuccessChance {
+	if roll < successRate {
 		return OutcomeSuccess
-	} else if roll < SuccessChance+FailChance {
+	}
+	// Distribute remaining chance between fail and counter-attack
+	// Keep same ratio: fail 20%, counter 30% -> fail 40%, counter 60% of remaining
+	remaining := 100 - successRate
+	failThreshold := successRate + (remaining * 40 / 100)
+	if roll < failThreshold {
 		return OutcomeFail
 	}
 	return OutcomeCounterAttack
@@ -176,6 +208,20 @@ func (g *RobGame) CanRob(ctx context.Context, robberID, victimID int64) (bool, s
 		return false, fmt.Sprintf("目标用户在保护期，剩余 %d 分钟", mins)
 	}
 
+	// Check shop item effects
+	if g.itemChecker != nil {
+		// Check if robber is handcuffed
+		if locked, remaining := g.itemChecker.IsHandcuffed(ctx, robberID); locked {
+			mins := int(remaining.Minutes()) + 1
+			return false, fmt.Sprintf("🔗 你被手铐锁定，无法打劫！剩余 %d 分钟", mins)
+		}
+
+		// Check if victim has shield
+		if g.itemChecker.HasShield(ctx, victimID) {
+			return false, "🛡️ 目标有保护罩，无法打劫"
+		}
+	}
+
 	return true, ""
 }
 
@@ -232,8 +278,16 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 	g.cooldowns[robberID] = time.Now()
 	g.mu.Unlock()
 
-	// Determine outcome
-	outcome := DetermineOutcome()
+	// Check for bloodthirst sword effect (80% success rate)
+	successRate := SuccessChance
+	hasBloodthirst := false
+	if g.itemChecker != nil && g.itemChecker.HasBloodthirstSword(ctx, robberID) {
+		successRate = BloodthirstSuccessChance
+		hasBloodthirst = true
+	}
+
+	// Determine outcome with appropriate success rate
+	outcome := DetermineOutcomeWithRate(successRate)
 
 	switch outcome {
 	case OutcomeFail:
@@ -336,6 +390,31 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 		robbedDesc := fmt.Sprintf("被 %s 打劫损失 %d 金币", robberName, amount)
 		g.txRepo.Create(ctx, victimID, -amount, TxTypeRobbed, &robbedDesc)
 
+		// Check for thorn armor effect - attacker loses double coins
+		thornArmorTriggered := false
+		thornDamage := int64(0)
+		if g.itemChecker != nil && g.itemChecker.HasThornArmor(ctx, victimID) {
+			thornDamage = amount * 2
+			// Cap at robber's new balance
+			if thornDamage > newRobber.Balance {
+				thornDamage = newRobber.Balance
+			}
+			if thornDamage > 0 {
+				// Deduct from robber
+				newRobber, err = g.userRepo.UpdateBalance(ctx, robberID, -thornDamage)
+				if err == nil {
+					// Add to victim
+					g.userRepo.UpdateBalance(ctx, victimID, thornDamage)
+					// Record transactions
+					thornDesc := fmt.Sprintf("荆棘刺甲反伤 %d 金币", thornDamage)
+					g.txRepo.Create(ctx, robberID, -thornDamage, TxTypeRobbed, &thornDesc)
+					thornGainDesc := fmt.Sprintf("荆棘刺甲反伤获得 %d 金币", thornDamage)
+					g.txRepo.Create(ctx, victimID, thornDamage, TxTypeRob, &thornGainDesc)
+					thornArmorTriggered = true
+				}
+			}
+		}
+
 		// Update victim's protection state
 		g.mu.Lock()
 		state, ok := g.protection[victimID]
@@ -362,6 +441,12 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 
 		// Build result message
 		msg := fmt.Sprintf("🔫 %s 打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
+		if hasBloodthirst {
+			msg = fmt.Sprintf("🗡️ %s 使用饮血剑打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
+		}
+		if thornArmorTriggered {
+			msg += fmt.Sprintf("\n🌵 荆棘刺甲反伤！%s 损失 %d 金币！", robberName, thornDamage)
+		}
 		if protectionActivated {
 			msg += fmt.Sprintf("\n🛡️ %s 触发保护期 %d 分钟", victimName, ProtectionDurationMin)
 		}

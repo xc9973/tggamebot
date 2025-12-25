@@ -35,18 +35,19 @@ type DailyRank struct {
 
 // Transaction types for categorizing balance changes.
 const (
-	TxTypeInitial   = "initial"    // Initial balance on account creation
-	TxTypeDaily     = "daily"      // Daily reward claim
-	TxTypeTransfer  = "transfer"   // User-to-user transfer
-	TxTypeDice      = "dice"       // Dice game result
-	TxTypeSlot      = "slot"       // Slot machine result
-	TxTypeSicBoBet  = "sicbo_bet"  // SicBo bet placement
-	TxTypeSicBoWin  = "sicbo_win"  // SicBo winnings
-	TxTypeAdminAdd  = "admin_add"  // Admin added balance
-	TxTypeAdminSub  = "admin_sub"  // Admin subtracted balance
-	TxTypeAdminSet  = "admin_set"  // Admin set balance
-	TxTypeRob       = "rob"        // Robbery - robber gains coins
-	TxTypeRobbed    = "robbed"     // Robbery - victim loses coins
+	TxTypeInitial      = "initial"       // Initial balance on account creation
+	TxTypeDaily        = "daily"         // Daily reward claim
+	TxTypeTransfer     = "transfer"      // User-to-user transfer
+	TxTypeDice         = "dice"          // Dice game result
+	TxTypeSlot         = "slot"          // Slot machine result
+	TxTypeSicBoBet     = "sicbo_bet"     // SicBo bet placement
+	TxTypeSicBoWin     = "sicbo_win"     // SicBo winnings
+	TxTypeAdminAdd     = "admin_add"     // Admin added balance
+	TxTypeAdminSub     = "admin_sub"     // Admin subtracted balance
+	TxTypeAdminSet     = "admin_set"     // Admin set balance
+	TxTypeRob          = "rob"           // Robbery - robber gains coins
+	TxTypeRobbed       = "robbed"        // Robbery - victim loses coins
+	TxTypeShopPurchase = "shop_purchase" // Shop item purchase
 )
 
 // GameTransactionTypes returns the transaction types that count towards daily game rankings.
