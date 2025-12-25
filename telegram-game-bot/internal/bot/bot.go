@@ -182,6 +182,7 @@ func (b *Bot) handlePhoto(c tele.Context) error {
 	}
 
 	return c.Reply(fmt.Sprintf("📷 File ID:\n`%s`", photo.FileID), tele.ModeMarkdown)
+}
 
 // handleStart routes /start to shop (private) or account (group)
 func (b *Bot) handleStart(c tele.Context) error {
