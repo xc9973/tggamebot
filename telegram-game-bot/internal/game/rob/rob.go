@@ -192,13 +192,28 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 	}
 
 	// Lock both users (always lock in order to prevent deadlock)
+	// Use TryLock to avoid blocking if someone else is using the lock
 	firstID, secondID := robberID, victimID
 	if victimID < robberID {
 		firstID, secondID = victimID, robberID
 	}
-	g.userLock.Lock(firstID)
+	
+	// Try to acquire first lock
+	if !g.userLock.TryLock(firstID) {
+		return &RobResult{
+			Success: false,
+			Message: "系统繁忙，请稍后重试",
+		}, nil
+	}
 	defer g.userLock.Unlock(firstID)
-	g.userLock.Lock(secondID)
+	
+	// Try to acquire second lock
+	if !g.userLock.TryLock(secondID) {
+		return &RobResult{
+			Success: false,
+			Message: "目标用户正在进行其他操作，请稍后重试",
+		}, nil
+	}
 	defer g.userLock.Unlock(secondID)
 
 	// Get both users' balances

@@ -277,41 +277,47 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 	// Set cooldown
 	h.setCooldown(sender.ID, "dice")
 
-	// Wait for dice animation
-	time.Sleep(3 * time.Second)
+	// Process result asynchronously to avoid blocking
+	go func() {
+		// Wait for dice animation
+		time.Sleep(3 * time.Second)
 
-	// Credit winnings (payout is net, so add bet back + payout)
-	if payout >= 0 {
-		// Win or push - credit bet + payout
-		creditAmount := bet + payout
-		if creditAmount > 0 {
-			desc := fmt.Sprintf("骰子游戏赢得 %d", payout)
-			h.accountService.UpdateBalance(ctx, sender.ID, creditAmount, model.TxTypeDice, &desc)
+		// Credit winnings (payout is net, so add bet back + payout)
+		if payout >= 0 {
+			// Win or push - credit bet + payout
+			creditAmount := bet + payout
+			if creditAmount > 0 {
+				h.userLock.Lock(sender.ID)
+				desc := fmt.Sprintf("骰子游戏赢得 %d", payout)
+				h.accountService.UpdateBalance(ctx, sender.ID, creditAmount, model.TxTypeDice, &desc)
+				h.userLock.Unlock(sender.ID)
+			}
 		}
-	}
-	// If payout < 0, bet was already deducted, nothing more to do
+		// If payout < 0, bet was already deducted, nothing more to do
 
-	// Get new balance
-	newBalance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		// Get new balance
+		newBalance, _ := h.accountService.GetBalance(ctx, sender.ID)
 
-	// Build result message with @username
-	var resultMsg string
-	switch {
-	case payout > bet:
-		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n🎊 JACKPOT! 赢得 %d 金币！\n💰 余额: %d", username, dice1Val, dice2Val, total, payout, newBalance)
-	case payout > 0:
-		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n🎉 赢得 %d 金币！\n💰 余额: %d", username, dice1Val, dice2Val, total, payout, newBalance)
-	case payout == 0:
-		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n😐 平局，返还下注\n💰 余额: %d", username, dice1Val, dice2Val, total, newBalance)
-	default:
-		resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n😢 输了 %d 金币\n💰 余额: %d", username, dice1Val, dice2Val, total, bet, newBalance)
-	}
+		// Build result message with @username
+		var resultMsg string
+		switch {
+		case payout > bet:
+			resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n🎊 JACKPOT! 赢得 %d 金币！\n💰 余额: %d", username, dice1Val, dice2Val, total, payout, newBalance)
+		case payout > 0:
+			resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n🎉 赢得 %d 金币！\n💰 余额: %d", username, dice1Val, dice2Val, total, payout, newBalance)
+		case payout == 0:
+			resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n😐 平局，返还下注\n💰 余额: %d", username, dice1Val, dice2Val, total, newBalance)
+		default:
+			resultMsg = fmt.Sprintf("@%s 🎲🎲 %d + %d = %d\n😢 输了 %d 金币\n💰 余额: %d", username, dice1Val, dice2Val, total, bet, newBalance)
+		}
 
-	replyMsg, err := c.Bot().Send(c.Chat(), resultMsg)
-	if err == nil && replyMsg != nil {
-		h.trackMessage(c.Chat().ID, replyMsg.ID)
-	}
-	return err
+		replyMsg, err := c.Bot().Send(c.Chat(), resultMsg)
+		if err == nil && replyMsg != nil {
+			h.trackMessage(c.Chat().ID, replyMsg.ID)
+		}
+	}()
+
+	return nil
 }
 
 // HandleSlot handles the /slot command.
@@ -400,40 +406,46 @@ func (h *GameHandler) HandleSlot(c tele.Context) error {
 	// Set cooldown
 	h.setCooldown(sender.ID, "slot")
 
-	// Wait for slot animation
-	time.Sleep(3 * time.Second)
+	// Process result asynchronously to avoid blocking
+	go func() {
+		// Wait for slot animation
+		time.Sleep(3 * time.Second)
 
-	// Credit winnings
-	if payout >= 0 {
-		creditAmount := bet + payout
-		if creditAmount > 0 {
-			desc := fmt.Sprintf("老虎机赢得 %d", payout)
-			h.accountService.UpdateBalance(ctx, sender.ID, creditAmount, model.TxTypeSlot, &desc)
+		// Credit winnings
+		if payout >= 0 {
+			creditAmount := bet + payout
+			if creditAmount > 0 {
+				h.userLock.Lock(sender.ID)
+				desc := fmt.Sprintf("老虎机赢得 %d", payout)
+				h.accountService.UpdateBalance(ctx, sender.ID, creditAmount, model.TxTypeSlot, &desc)
+				h.userLock.Unlock(sender.ID)
+			}
 		}
-	}
 
-	// Get new balance
-	newBalance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		// Get new balance
+		newBalance, _ := h.accountService.GetBalance(ctx, sender.ID)
 
-	// Build result message with @username
-	symbols := []string{slot.SymbolNames[left], slot.SymbolNames[middle], slot.SymbolNames[right]}
-	slotDisplay := strings.Join(symbols, " ")
+		// Build result message with @username
+		symbols := []string{slot.SymbolNames[left], slot.SymbolNames[middle], slot.SymbolNames[right]}
+		slotDisplay := strings.Join(symbols, " ")
 
-	var resultMsg string
-	switch {
-	case payout > 0:
-		resultMsg = fmt.Sprintf("@%s 🎰 %s\n🎊 三连！赢得 %d 金币！\n💰 余额: %d", username, slotDisplay, payout, newBalance)
-	case payout == 0:
-		resultMsg = fmt.Sprintf("@%s 🎰 %s\n😐 两连，返还下注\n💰 余额: %d", username, slotDisplay, newBalance)
-	default:
-		resultMsg = fmt.Sprintf("@%s 🎰 %s\n😢 没中，输了 %d 金币\n💰 余额: %d", username, slotDisplay, bet, newBalance)
-	}
+		var resultMsg string
+		switch {
+		case payout > 0:
+			resultMsg = fmt.Sprintf("@%s 🎰 %s\n🎊 三连！赢得 %d 金币！\n💰 余额: %d", username, slotDisplay, payout, newBalance)
+		case payout == 0:
+			resultMsg = fmt.Sprintf("@%s 🎰 %s\n😐 两连，返还下注\n💰 余额: %d", username, slotDisplay, newBalance)
+		default:
+			resultMsg = fmt.Sprintf("@%s 🎰 %s\n😢 没中，输了 %d 金币\n💰 余额: %d", username, slotDisplay, bet, newBalance)
+		}
 
-	replyMsg, err := c.Bot().Send(c.Chat(), resultMsg)
-	if err == nil && replyMsg != nil {
-		h.trackMessage(c.Chat().ID, replyMsg.ID)
-	}
-	return err
+		replyMsg, err := c.Bot().Send(c.Chat(), resultMsg)
+		if err == nil && replyMsg != nil {
+			h.trackMessage(c.Chat().ID, replyMsg.ID)
+		}
+	}()
+
+	return nil
 }
 
 
