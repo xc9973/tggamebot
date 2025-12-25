@@ -17,6 +17,7 @@ const (
 )
 
 // BuildShopPanel creates the main shop panel with item buttons
+// Requirements: 1.1, 1.2 - Display 8 items with use count and daily limit info
 func BuildShopPanel() *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	
@@ -24,6 +25,7 @@ func BuildShopPanel() *tele.ReplyMarkup {
 	var rows [][]tele.InlineButton
 	
 	// Create a button for each item (2 per row)
+	// Display: emoji name (price💰)
 	var currentRow []tele.InlineButton
 	for i, item := range items {
 		btn := tele.InlineButton{
@@ -63,36 +65,76 @@ func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 }
 
 // FormatShopMessage creates the shop welcome message
+// Requirements: 1.1, 1.2 - Display all 8 items with name, price, use count, and description
 func FormatShopMessage(balance int64) string {
-	msg := fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
-	msg += "👇 选择要购买的道具"
+	msg := fmt.Sprintf("🏪 游戏商店\n💰 余额: %d 金币\n\n", balance)
+	
+	// List all items with details
+	items := GetAllItems()
+	for _, item := range items {
+		msg += fmt.Sprintf("%s %s - %d💰\n", item.Emoji, item.Name, item.Price)
+		msg += fmt.Sprintf("   📦 %d次", item.UseCount)
+		if item.HasDailyLimit() {
+			msg += fmt.Sprintf(" | 🔒 限购%d/日", item.DailyLimit)
+		}
+		msg += "\n"
+	}
+	
+	msg += "\n👇 点击按钮购买道具"
 	return msg
 }
 
 // FormatItemDetail creates the item detail message
+// Requirements: 1.2 - Show item name, price, use count, and daily limit info
 func FormatItemDetail(item ItemConfig, balance int64) string {
 	msg := fmt.Sprintf("%s %s\n\n", item.Emoji, item.Name)
 	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
-	
-	if item.IsTimeBased() {
-		msg += fmt.Sprintf("⏱ 时效: %s\n", FormatDuration(item.Duration))
-	} else {
-		msg += "📦 类型: 一次性道具\n"
+	msg += fmt.Sprintf("📦 使用次数: %d次\n", item.UseCount)
+
+	if item.HasDailyLimit() {
+		msg += fmt.Sprintf("🔒 每日限购: %d次\n", item.DailyLimit)
 	}
-	
+
 	msg += fmt.Sprintf("📝 %s\n\n", item.Description)
 	msg += fmt.Sprintf("💰 你的余额: %d 金币\n\n", balance)
-	
+
 	if balance < item.Price {
 		msg += "❌ 余额不足"
 	} else {
 		msg += "✅ 确认购买？"
 	}
-	
+
+	return msg
+}
+
+// FormatItemDetailWithDailyCount creates the item detail message with daily purchase count
+// Requirements: 1.2, 2.9, 3.8, 7.8 - Show daily limit and current purchase count
+func FormatItemDetailWithDailyCount(item ItemConfig, balance int64, dailyCount int) string {
+	msg := fmt.Sprintf("%s %s\n\n", item.Emoji, item.Name)
+	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
+	msg += fmt.Sprintf("📦 使用次数: %d次\n", item.UseCount)
+
+	if item.HasDailyLimit() {
+		msg += fmt.Sprintf("🔒 每日限购: %d/%d次\n", dailyCount, item.DailyLimit)
+	}
+
+	msg += fmt.Sprintf("📝 %s\n\n", item.Description)
+	msg += fmt.Sprintf("💰 你的余额: %d 金币\n\n", balance)
+
+	// Check daily limit first
+	if item.HasDailyLimit() && dailyCount >= item.DailyLimit {
+		msg += "❌ 今日购买次数已达上限"
+	} else if balance < item.Price {
+		msg += "❌ 余额不足"
+	} else {
+		msg += "✅ 确认购买？"
+	}
+
 	return msg
 }
 
 // FormatInventoryMessage creates the inventory display message
+// Requirements: 11.2 - Show item name, quantity (for Handcuffs), and remaining use count (for other items)
 func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectInfo) string {
 	msg := "🎒 我的背包\n\n"
 	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
@@ -100,10 +142,13 @@ func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectIn
 	if handcuffCount == 0 && len(effects) == 0 {
 		msg += "📭 背包空空如也~"
 	} else {
+		msg += "📦 道具列表:\n"
+		msg += "─────────────\n"
+		
 		if handcuffCount > 0 {
 			item, _ := GetItem(ItemHandcuff)
 			msg += fmt.Sprintf("%s %s ×%d\n", item.Emoji, item.Name, handcuffCount)
-			msg += "用法: 回复消息 /handcuff\n"
+			msg += "   └ 用法: 回复消息 /handcuff\n"
 		}
 		
 		for _, effect := range effects {
@@ -111,7 +156,7 @@ func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectIn
 			if !ok {
 				continue
 			}
-			msg += fmt.Sprintf("%s %s (%s)\n", item.Emoji, item.Name, effect.RemainingStr)
+			msg += fmt.Sprintf("%s %s - %s\n", item.Emoji, item.Name, effect.RemainingStr)
 		}
 	}
 	
@@ -150,4 +195,12 @@ func FormatRemainingTime(remaining int64) string {
 		return fmt.Sprintf("%d小时%d分钟", hours, minutes)
 	}
 	return fmt.Sprintf("%d分钟", minutes)
+}
+
+// FormatUseCount formats use count for display
+func FormatUseCount(useCount int) string {
+	if useCount <= 0 {
+		return "已用完"
+	}
+	return fmt.Sprintf("剩余%d次", useCount)
 }

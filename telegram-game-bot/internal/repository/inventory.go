@@ -8,21 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// UserItem represents a stackable item in user's inventory
+// UserItem represents a use-count based item in user's inventory
+// Requirements: 3.7, 4.5, 5.5, 6.6, 7.7, 8.5, 9.6 - Use count based items
 type UserItem struct {
 	UserID    int64
 	ItemType  string
-	Quantity  int
+	UseCount  int
 	UpdatedAt time.Time
-}
-
-// UserEffect represents a time-based effect on a user
-type UserEffect struct {
-	ID         int64
-	UserID     int64
-	EffectType string
-	ExpiresAt  time.Time
-	CreatedAt  time.Time
 }
 
 // HandcuffLock represents a user locked by handcuffs
@@ -31,6 +23,15 @@ type HandcuffLock struct {
 	LockedBy  int64
 	ExpiresAt time.Time
 	CreatedAt time.Time
+}
+
+// DailyPurchase represents a daily purchase record
+// Requirements: 12.1, 12.2 - Daily purchase tracking
+type DailyPurchase struct {
+	UserID        int64
+	ItemType      string
+	PurchaseCount int
+	PurchaseDate  time.Time
 }
 
 // InventoryRepository handles shop item persistence
@@ -43,41 +44,44 @@ func NewInventoryRepository(pool *pgxpool.Pool) *InventoryRepository {
 	return &InventoryRepository{pool: pool}
 }
 
-// ========== User Items (Stackable) ==========
+// ========== User Items (Use Count Based) ==========
 
-// AddItem adds quantity to a user's item count
-func (r *InventoryRepository) AddItem(ctx context.Context, userID int64, itemType string, quantity int) error {
+// AddItem adds use count to a user's item
+// Requirements: 3.6 - Add item with use count
+func (r *InventoryRepository) AddItem(ctx context.Context, userID int64, itemType string, useCount int) error {
 	const query = `
-		INSERT INTO user_items (user_id, item_type, quantity, updated_at)
+		INSERT INTO user_items (user_id, item_type, use_count, updated_at)
 		VALUES ($1, $2, $3, NOW())
 		ON CONFLICT (user_id, item_type) 
-		DO UPDATE SET quantity = user_items.quantity + $3, updated_at = NOW()
+		DO UPDATE SET use_count = user_items.use_count + $3, updated_at = NOW()
 	`
-	_, err := r.pool.Exec(ctx, query, userID, itemType, quantity)
+	_, err := r.pool.Exec(ctx, query, userID, itemType, useCount)
 	return err
 }
 
-// GetItemCount returns the quantity of a specific item for a user
-func (r *InventoryRepository) GetItemCount(ctx context.Context, userID int64, itemType string) (int, error) {
+// GetUseCount returns the remaining use count of a specific item for a user
+// Requirements: 3.6 - Get use count
+func (r *InventoryRepository) GetUseCount(ctx context.Context, userID int64, itemType string) (int, error) {
 	const query = `
-		SELECT quantity FROM user_items
+		SELECT use_count FROM user_items
 		WHERE user_id = $1 AND item_type = $2
 	`
-	var quantity int
-	err := r.pool.QueryRow(ctx, query, userID, itemType).Scan(&quantity)
+	var useCount int
+	err := r.pool.QueryRow(ctx, query, userID, itemType).Scan(&useCount)
 	if err != nil {
-		// No rows means 0 quantity
+		// No rows means 0 use count
 		return 0, nil
 	}
-	return quantity, nil
+	return useCount, nil
 }
 
-// DecrementItem decreases item quantity by 1, returns true if successful
-func (r *InventoryRepository) DecrementItem(ctx context.Context, userID int64, itemType string) (bool, error) {
+// DecrementUseCount decreases item use count by 1, returns true if successful
+// Requirements: 3.6, 3.7, 4.4, 4.5, 5.4, 5.5, 6.5, 6.6, 7.6, 7.7, 8.4, 8.5, 9.5, 9.6
+func (r *InventoryRepository) DecrementUseCount(ctx context.Context, userID int64, itemType string) (bool, error) {
 	const query = `
 		UPDATE user_items
-		SET quantity = quantity - 1, updated_at = NOW()
-		WHERE user_id = $1 AND item_type = $2 AND quantity > 0
+		SET use_count = use_count - 1, updated_at = NOW()
+		WHERE user_id = $1 AND item_type = $2 AND use_count > 0
 	`
 	result, err := r.pool.Exec(ctx, query, userID, itemType)
 	if err != nil {
@@ -86,12 +90,22 @@ func (r *InventoryRepository) DecrementItem(ctx context.Context, userID int64, i
 	return result.RowsAffected() > 0, nil
 }
 
-// GetAllItems returns all items for a user
+// RemoveItem removes an item completely from user's inventory
+func (r *InventoryRepository) RemoveItem(ctx context.Context, userID int64, itemType string) error {
+	const query = `
+		DELETE FROM user_items
+		WHERE user_id = $1 AND item_type = $2
+	`
+	_, err := r.pool.Exec(ctx, query, userID, itemType)
+	return err
+}
+
+// GetAllItems returns all items for a user with use_count > 0
 func (r *InventoryRepository) GetAllItems(ctx context.Context, userID int64) ([]UserItem, error) {
 	const query = `
-		SELECT user_id, item_type, quantity, updated_at
+		SELECT user_id, item_type, use_count, updated_at
 		FROM user_items
-		WHERE user_id = $1 AND quantity > 0
+		WHERE user_id = $1 AND use_count > 0
 	`
 	rows, err := r.pool.Query(ctx, query, userID)
 	if err != nil {
@@ -102,7 +116,7 @@ func (r *InventoryRepository) GetAllItems(ctx context.Context, userID int64) ([]
 	var items []UserItem
 	for rows.Next() {
 		var item UserItem
-		if err := rows.Scan(&item.UserID, &item.ItemType, &item.Quantity, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.UserID, &item.ItemType, &item.UseCount, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)
@@ -110,83 +124,93 @@ func (r *InventoryRepository) GetAllItems(ctx context.Context, userID int64) ([]
 	return items, rows.Err()
 }
 
-// ========== User Effects (Time-based) ==========
-
-// AddEffect adds a time-based effect to a user
-func (r *InventoryRepository) AddEffect(ctx context.Context, userID int64, effectType string, expiresAt time.Time) error {
-	// First, remove any existing effect of the same type (replace)
-	_, err := r.pool.Exec(ctx, `
-		DELETE FROM user_effects WHERE user_id = $1 AND effect_type = $2
-	`, userID, effectType)
+// HasItem checks if a user has an item with use_count > 0
+func (r *InventoryRepository) HasItem(ctx context.Context, userID int64, itemType string) (bool, error) {
+	useCount, err := r.GetUseCount(ctx, userID, itemType)
 	if err != nil {
-		return err
+		return false, err
 	}
+	return useCount > 0, nil
+}
 
+// GetItemCount is an alias for GetUseCount for backward compatibility
+// Deprecated: Use GetUseCount instead
+func (r *InventoryRepository) GetItemCount(ctx context.Context, userID int64, itemType string) (int, error) {
+	return r.GetUseCount(ctx, userID, itemType)
+}
+
+// DecrementItem is an alias for DecrementUseCount for backward compatibility
+// Deprecated: Use DecrementUseCount instead
+func (r *InventoryRepository) DecrementItem(ctx context.Context, userID int64, itemType string) (bool, error) {
+	return r.DecrementUseCount(ctx, userID, itemType)
+}
+
+// HasActiveEffect checks if a user has an active effect (use_count > 0)
+// This replaces the old time-based effect system with use-count based system
+func (r *InventoryRepository) HasActiveEffect(ctx context.Context, userID int64, effectType string) (bool, error) {
+	return r.HasItem(ctx, userID, effectType)
+}
+
+// GetActiveEffects returns all items with use_count > 0 as "effects"
+// This is for backward compatibility with the old effect system
+func (r *InventoryRepository) GetActiveEffects(ctx context.Context, userID int64) ([]UserItem, error) {
+	return r.GetAllItems(ctx, userID)
+}
+
+// GetEffectExpiry is deprecated - returns zero time since we no longer use time-based effects
+// Deprecated: Use GetUseCount instead to check remaining uses
+func (r *InventoryRepository) GetEffectExpiry(ctx context.Context, userID int64, effectType string) (time.Time, error) {
+	// No longer using time-based effects, return zero time
+	return time.Time{}, nil
+}
+
+// AddEffect is deprecated - use AddItem instead
+// This method is kept for backward compatibility
+// Deprecated: Use AddItem instead
+func (r *InventoryRepository) AddEffect(ctx context.Context, userID int64, effectType string, expiresAt time.Time) error {
+	// For backward compatibility, add 1 use count
+	return r.AddItem(ctx, userID, effectType, 1)
+}
+
+
+// ========== Daily Purchases ==========
+
+// GetDailyPurchaseCount returns the number of times a user has purchased an item today
+// Requirements: 12.1, 12.3 - Daily purchase tracking
+func (r *InventoryRepository) GetDailyPurchaseCount(ctx context.Context, userID int64, itemType string) (int, error) {
 	const query = `
-		INSERT INTO user_effects (user_id, effect_type, expires_at, created_at)
-		VALUES ($1, $2, $3, NOW())
+		SELECT purchase_count FROM daily_purchases
+		WHERE user_id = $1 AND item_type = $2 AND purchase_date = CURRENT_DATE
 	`
-	_, err = r.pool.Exec(ctx, query, userID, effectType, expiresAt)
+	var count int
+	err := r.pool.QueryRow(ctx, query, userID, itemType).Scan(&count)
+	if err != nil {
+		// No rows means 0 purchases today
+		return 0, nil
+	}
+	return count, nil
+}
+
+// IncrementDailyPurchase increments the daily purchase count for a user and item
+// Requirements: 12.1, 12.3 - Daily purchase tracking
+func (r *InventoryRepository) IncrementDailyPurchase(ctx context.Context, userID int64, itemType string) error {
+	const query = `
+		INSERT INTO daily_purchases (user_id, item_type, purchase_count, purchase_date)
+		VALUES ($1, $2, 1, CURRENT_DATE)
+		ON CONFLICT (user_id, item_type, purchase_date) 
+		DO UPDATE SET purchase_count = daily_purchases.purchase_count + 1
+	`
+	_, err := r.pool.Exec(ctx, query, userID, itemType)
 	return err
 }
 
-// HasActiveEffect checks if a user has an active effect of the given type
-func (r *InventoryRepository) HasActiveEffect(ctx context.Context, userID int64, effectType string) (bool, error) {
+// CleanOldDailyPurchases removes daily purchase records older than the specified number of days
+func (r *InventoryRepository) CleanOldDailyPurchases(ctx context.Context, daysOld int) (int64, error) {
 	const query = `
-		SELECT EXISTS(
-			SELECT 1 FROM user_effects
-			WHERE user_id = $1 AND effect_type = $2 AND expires_at > NOW()
-		)
+		DELETE FROM daily_purchases
+		WHERE purchase_date < CURRENT_DATE - $1::interval
 	`
-	var exists bool
-	err := r.pool.QueryRow(ctx, query, userID, effectType).Scan(&exists)
-	return exists, err
-}
-
-// GetActiveEffects returns all active effects for a user
-func (r *InventoryRepository) GetActiveEffects(ctx context.Context, userID int64) ([]UserEffect, error) {
-	const query = `
-		SELECT id, user_id, effect_type, expires_at, created_at
-		FROM user_effects
-		WHERE user_id = $1 AND expires_at > NOW()
-		ORDER BY expires_at ASC
-	`
-	rows, err := r.pool.Query(ctx, query, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var effects []UserEffect
-	for rows.Next() {
-		var effect UserEffect
-		if err := rows.Scan(&effect.ID, &effect.UserID, &effect.EffectType, &effect.ExpiresAt, &effect.CreatedAt); err != nil {
-			return nil, err
-		}
-		effects = append(effects, effect)
-	}
-	return effects, rows.Err()
-}
-
-// GetEffectExpiry returns the expiry time of an active effect, or zero time if not active
-func (r *InventoryRepository) GetEffectExpiry(ctx context.Context, userID int64, effectType string) (time.Time, error) {
-	const query = `
-		SELECT expires_at FROM user_effects
-		WHERE user_id = $1 AND effect_type = $2 AND expires_at > NOW()
-		ORDER BY expires_at DESC
-		LIMIT 1
-	`
-	var expiresAt time.Time
-	err := r.pool.QueryRow(ctx, query, userID, effectType).Scan(&expiresAt)
-	if err != nil {
-		return time.Time{}, nil // No active effect
-	}
-	return expiresAt, nil
-}
-
-// CleanExpiredEffects removes expired effects from the database
-func (r *InventoryRepository) CleanExpiredEffects(ctx context.Context) (int64, error) {
-	result, err := r.pool.Exec(ctx, `DELETE FROM user_effects WHERE expires_at <= NOW()`)
+	result, err := r.pool.Exec(ctx, query, daysOld)
 	if err != nil {
 		return 0, err
 	}

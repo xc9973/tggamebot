@@ -14,17 +14,18 @@ import (
 
 // Shop service errors
 var (
-	ErrItemNotFound   = errors.New("道具不存在")
-	ErrNoHandcuff     = errors.New("没有手铐道具")
-	ErrSelfHandcuff   = errors.New("不能对自己使用手铐")
-	ErrTargetNotFound = errors.New("目标用户未找到")
-	ErrAlreadyLocked  = errors.New("目标已被锁定")
+	ErrItemNotFound       = errors.New("道具不存在")
+	ErrNoHandcuff         = errors.New("没有手铐道具")
+	ErrSelfHandcuff       = errors.New("不能对自己使用手铐")
+	ErrTargetNotFound     = errors.New("目标用户未找到")
+	ErrAlreadyLocked      = errors.New("目标已被锁定")
+	ErrDailyLimitReached  = errors.New("今日购买次数已达上限")
 )
 
 // UserInventory represents a user's complete inventory
 type UserInventory struct {
 	HandcuffCount int
-	Effects       []repository.UserEffect
+	Items         []repository.UserItem
 }
 
 // ShopService handles shop-related business logic
@@ -56,6 +57,7 @@ func (s *ShopService) GetShopItems() []shop.ItemConfig {
 }
 
 // PurchaseItem handles item purchase
+// Requirements: 12.3, 12.4 - Check daily limit before purchase
 func (s *ShopService) PurchaseItem(ctx context.Context, userID int64, itemType shop.ItemType) error {
 	// Get item config
 	item, ok := shop.GetItem(itemType)
@@ -66,6 +68,18 @@ func (s *ShopService) PurchaseItem(ctx context.Context, userID int64, itemType s
 	// Lock user for balance operation
 	s.userLock.Lock(userID)
 	defer s.userLock.Unlock(userID)
+
+	// Check daily purchase limit if applicable
+	// Requirements: 2.3, 2.9, 3.3, 3.8, 7.3, 7.8, 12.3, 12.4
+	if item.HasDailyLimit() {
+		purchaseCount, err := s.inventoryRepo.GetDailyPurchaseCount(ctx, userID, string(itemType))
+		if err != nil {
+			return err
+		}
+		if purchaseCount >= item.DailyLimit {
+			return ErrDailyLimitReached
+		}
+	}
 
 	// Check balance
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -87,17 +101,21 @@ func (s *ShopService) PurchaseItem(ctx context.Context, userID int64, itemType s
 	// Record transaction
 	s.txRepo.Create(ctx, userID, -item.Price, model.TxTypeShopPurchase, &desc)
 
-	// Add item to inventory
-	if item.IsOneTimeUse() {
-		// Stackable item (like handcuffs)
-		err = s.inventoryRepo.AddItem(ctx, userID, string(itemType), 1)
-	} else {
-		// Time-based effect
-		expiresAt := time.Now().Add(item.Duration)
-		err = s.inventoryRepo.AddEffect(ctx, userID, string(itemType), expiresAt)
+	// Add item to inventory with use count
+	err = s.inventoryRepo.AddItem(ctx, userID, string(itemType), item.UseCount)
+	if err != nil {
+		return err
 	}
 
-	return err
+	// Increment daily purchase count if item has daily limit
+	if item.HasDailyLimit() {
+		err = s.inventoryRepo.IncrementDailyPurchase(ctx, userID, string(itemType))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // UseHandcuff uses a handcuff on a target user
@@ -151,15 +169,15 @@ func (s *ShopService) GetUserInventory(ctx context.Context, userID int64) (*User
 		return nil, err
 	}
 
-	// Get active effects
-	effects, err := s.inventoryRepo.GetActiveEffects(ctx, userID)
+	// Get all items with use_count > 0
+	items, err := s.inventoryRepo.GetAllItems(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &UserInventory{
 		HandcuffCount: handcuffCount,
-		Effects:       effects,
+		Items:         items,
 	}, nil
 }
 
@@ -198,7 +216,94 @@ func (s *ShopService) HasBloodthirstSword(ctx context.Context, userID int64) boo
 }
 
 // GetEffectExpiry returns the expiry time of an effect
+// Deprecated: Use GetEffectUseCount instead since we now use use-count based system
 func (s *ShopService) GetEffectExpiry(ctx context.Context, userID int64, effectType shop.ItemType) time.Time {
 	expiry, _ := s.inventoryRepo.GetEffectExpiry(ctx, userID, string(effectType))
 	return expiry
+}
+
+// GetEffectUseCount returns the remaining use count of an effect
+// Requirements: 6.3, 7.4, 8.3, 9.3 - Get remaining use count for items
+func (s *ShopService) GetEffectUseCount(ctx context.Context, userID int64, effectType shop.ItemType) (int, error) {
+	return s.inventoryRepo.GetUseCount(ctx, userID, string(effectType))
+}
+
+// DecrementUseCount decreases the use count of an item by 1
+// Requirements: 3.6, 3.7, 4.4, 4.5, 5.4, 5.5, 6.5, 6.6, 7.6, 7.7, 8.4, 8.5, 9.5, 9.6
+func (s *ShopService) DecrementUseCount(ctx context.Context, userID int64, effectType shop.ItemType) error {
+	_, err := s.inventoryRepo.DecrementUseCount(ctx, userID, string(effectType))
+	return err
+}
+
+// DecrementUseCountByString decreases the use count of an item by 1 (accepts string type)
+// This method is used by the ItemEffectChecker interface
+// Requirements: 6.5, 7.6, 8.4, 9.5 - Decrement use count after item use
+func (s *ShopService) DecrementUseCountByString(ctx context.Context, userID int64, effectType string) error {
+	_, err := s.inventoryRepo.DecrementUseCount(ctx, userID, effectType)
+	return err
+}
+
+// HasEmperorClothes checks if user has active emperor clothes (highest priority defense)
+// Requirements: 9.3, 9.4 - Emperor clothes immunity check
+func (s *ShopService) HasEmperorClothes(ctx context.Context, userID int64) bool {
+	has, err := s.inventoryRepo.HasActiveEffect(ctx, userID, string(shop.ItemEmperorClothes))
+	return err == nil && has
+}
+
+// HasBluntKnife checks if user has active blunt knife
+// Requirements: 6.3 - Blunt knife bypass defense check
+func (s *ShopService) HasBluntKnife(ctx context.Context, userID int64) bool {
+	has, err := s.inventoryRepo.HasActiveEffect(ctx, userID, string(shop.ItemBluntKnife))
+	return err == nil && has
+}
+
+// HasGreatSword checks if user has active great sword
+// Requirements: 7.4 - Great sword bypass defense check
+func (s *ShopService) HasGreatSword(ctx context.Context, userID int64) bool {
+	has, err := s.inventoryRepo.HasActiveEffect(ctx, userID, string(shop.ItemGreatSword))
+	return err == nil && has
+}
+
+// HasGoldenCassock checks if user has active golden cassock
+// Requirements: 8.3 - Golden cassock defense removal check
+func (s *ShopService) HasGoldenCassock(ctx context.Context, userID int64) bool {
+	has, err := s.inventoryRepo.HasActiveEffect(ctx, userID, string(shop.ItemGoldenCassock))
+	return err == nil && has
+}
+
+// RemoveDefensiveItems removes all defensive items (Shield, Thorn Armor) from a user
+// This is triggered by Golden Cassock effect
+// Requirements: 8.4 - Remove attacker's defensive items
+func (s *ShopService) RemoveDefensiveItems(ctx context.Context, userID int64) error {
+	// Remove Shield
+	err := s.inventoryRepo.RemoveItem(ctx, userID, string(shop.ItemShield))
+	if err != nil {
+		return err
+	}
+	// Remove Thorn Armor
+	err = s.inventoryRepo.RemoveItem(ctx, userID, string(shop.ItemThornArmor))
+	return err
+}
+
+// CheckDailyLimit checks if a user has reached the daily purchase limit for an item
+// Returns (canPurchase, currentCount, error)
+// Requirements: 12.3, 12.4 - Daily purchase limit check
+func (s *ShopService) CheckDailyLimit(ctx context.Context, userID int64, itemType shop.ItemType) (bool, int, error) {
+	item, ok := shop.GetItem(itemType)
+	if !ok {
+		return false, 0, ErrItemNotFound
+	}
+
+	// If no daily limit, always allow
+	if !item.HasDailyLimit() {
+		return true, 0, nil
+	}
+
+	purchaseCount, err := s.inventoryRepo.GetDailyPurchaseCount(ctx, userID, string(itemType))
+	if err != nil {
+		return false, 0, err
+	}
+
+	canPurchase := purchaseCount < item.DailyLimit
+	return canPurchase, purchaseCount, nil
 }

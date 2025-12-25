@@ -29,6 +29,17 @@ const (
 	
 	// Bloodthirst sword success rate
 	BloodthirstSuccessChance = 80 // 80% success rate with bloodthirst sword
+	
+	// Blunt knife amount limits
+	// Requirements: 6.5 - Blunt knife limits robbery amount to 1-100
+	BluntKnifeMinAmount = 1   // Minimum robbery amount with blunt knife
+	BluntKnifeMaxAmount = 100 // Maximum robbery amount with blunt knife
+	
+	// Great sword critical hit
+	// Requirements: 7.6 - Great sword has 0.01% chance to rob 90% of target's coins
+	GreatSwordCriticalChance = 1     // 0.01% = 1 in 10000
+	GreatSwordCriticalDenom  = 10000 // Denominator for critical chance calculation
+	GreatSwordCriticalPercent = 90   // Rob 90% of target's coins on critical hit
 )
 
 // ItemEffectChecker interface for checking shop item effects
@@ -42,6 +53,28 @@ type ItemEffectChecker interface {
 	HasThornArmor(ctx context.Context, userID int64) bool
 	// HasBloodthirstSword checks if user has active bloodthirst sword
 	HasBloodthirstSword(ctx context.Context, userID int64) bool
+	// HasEmperorClothes checks if user has active emperor clothes (highest priority defense)
+	// Emperor clothes immune ALL attacks including bypass defense items (blunt knife, great sword)
+	HasEmperorClothes(ctx context.Context, userID int64) bool
+	// HasBluntKnife checks if user has active blunt knife
+	// Blunt knife bypasses Shield and Thorn Armor but NOT Emperor Clothes
+	// Requirements: 6.4 - Bypass defense check
+	HasBluntKnife(ctx context.Context, userID int64) bool
+	// HasGreatSword checks if user has active great sword
+	// Great sword bypasses Shield and Thorn Armor but NOT Emperor Clothes
+	// Great sword has 0.01% chance to rob 90% of target's coins
+	// Requirements: 7.5, 7.6 - Bypass defense and critical hit
+	HasGreatSword(ctx context.Context, userID int64) bool
+	// HasGoldenCassock checks if user has active golden cassock
+	// Golden cassock removes attacker's defensive items (Shield, Thorn Armor)
+	// Requirements: 8.3, 8.4 - Golden cassock defense removal
+	HasGoldenCassock(ctx context.Context, userID int64) bool
+	// RemoveDefensiveItems removes all defensive items (Shield, Thorn Armor) from a user
+	// This is triggered by Golden Cassock effect
+	// Requirements: 8.4 - Remove attacker's defensive items
+	RemoveDefensiveItems(ctx context.Context, userID int64) error
+	// DecrementUseCountByString decreases the use count of an item by 1
+	DecrementUseCountByString(ctx context.Context, userID int64, effectType string) error
 }
 
 // RobOutcome represents the outcome type of a robbery attempt
@@ -122,6 +155,24 @@ func (g *RobGame) SetItemChecker(checker ItemEffectChecker) {
 // GenerateAmount generates a random robbery amount between MinRobAmount and MaxRobAmount
 func GenerateAmount() int64 {
 	return int64(rand.Intn(MaxRobAmount-MinRobAmount+1) + MinRobAmount)
+}
+
+// GenerateBluntKnifeAmount generates a random robbery amount for blunt knife (1-100)
+// Requirements: 6.5 - Blunt knife limits robbery amount to 1-100
+func GenerateBluntKnifeAmount() int64 {
+	return int64(rand.Intn(BluntKnifeMaxAmount-BluntKnifeMinAmount+1) + BluntKnifeMinAmount)
+}
+
+// IsGreatSwordCritical checks if great sword triggers a critical hit (0.01% chance)
+// Requirements: 7.6 - Great sword has 0.01% chance to rob 90% of target's coins
+func IsGreatSwordCritical() bool {
+	return rand.Intn(GreatSwordCriticalDenom) < GreatSwordCriticalChance
+}
+
+// CalculateGreatSwordCriticalAmount calculates the amount for a great sword critical hit (90% of target's balance)
+// Requirements: 7.6 - Rob 90% of target's coins on critical hit
+func CalculateGreatSwordCriticalAmount(targetBalance int64) int64 {
+	return targetBalance * GreatSwordCriticalPercent / 100
 }
 
 // DetermineOutcome randomly determines the outcome of a robbery attempt
@@ -216,8 +267,32 @@ func (g *RobGame) CanRob(ctx context.Context, robberID, victimID int64) (bool, s
 			return false, fmt.Sprintf("🔗 你被手铐锁定，无法打劫！剩余 %d 分钟", mins)
 		}
 
-		// Check if victim has shield
-		if g.itemChecker.HasShield(ctx, victimID) {
+		// Check if victim has Emperor Clothes (highest priority defense)
+		// Emperor Clothes immune ALL attacks including bypass defense items (blunt knife, great sword)
+		// Requirements: 9.4, 9.5 - Emperor clothes prevents ALL robbery attempts
+		if g.itemChecker.HasEmperorClothes(ctx, victimID) {
+			return false, "👑 目标有皇帝的新衣，无法打劫"
+		}
+
+		// Check if victim has Golden Cassock - triggers defense removal on attacker
+		// Requirements: 8.4 - Golden cassock removes attacker's defensive items (Shield, Thorn Armor)
+		if g.itemChecker.HasGoldenCassock(ctx, victimID) {
+			// Remove attacker's defensive items (Shield, Thorn Armor)
+			g.itemChecker.RemoveDefensiveItems(ctx, robberID)
+			// Decrement golden cassock use count
+			g.itemChecker.DecrementUseCountByString(ctx, victimID, "golden_cassock")
+		}
+
+		// Check if robber has blunt knife or great sword (bypasses shield and thorn armor)
+		// Requirements: 6.4 - Blunt knife ignores Shield and Thorn Armor (but NOT Emperor Clothes)
+		// Requirements: 7.5 - Great sword ignores Shield and Thorn Armor (but NOT Emperor Clothes)
+		hasBluntKnife := g.itemChecker.HasBluntKnife(ctx, robberID)
+		hasGreatSword := g.itemChecker.HasGreatSword(ctx, robberID)
+		hasBypassDefense := hasBluntKnife || hasGreatSword
+
+		// Check if victim has shield (can be bypassed by blunt knife/great sword)
+		// Requirements: 6.4, 7.5 - Blunt knife and great sword bypass shield
+		if g.itemChecker.HasShield(ctx, victimID) && !hasBypassDefense {
 			return false, "🛡️ 目标有保护罩，无法打劫"
 		}
 	}
@@ -363,7 +438,36 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 			}, nil
 		}
 
-		amount := GenerateAmount()
+		// Check for blunt knife effect
+		// Requirements: 6.4, 6.5 - Blunt knife bypasses defense and limits amount to 1-100
+		hasBluntKnife := false
+		if g.itemChecker != nil && g.itemChecker.HasBluntKnife(ctx, robberID) {
+			hasBluntKnife = true
+		}
+
+		// Check for great sword effect
+		// Requirements: 7.5, 7.6 - Great sword bypasses defense and has 0.01% critical hit
+		hasGreatSword := false
+		isGreatSwordCritical := false
+		if g.itemChecker != nil && g.itemChecker.HasGreatSword(ctx, robberID) {
+			hasGreatSword = true
+			// Check for critical hit (0.01% chance)
+			isGreatSwordCritical = IsGreatSwordCritical()
+		}
+
+		// Generate robbery amount based on weapon
+		var amount int64
+		if hasBluntKnife {
+			// Blunt knife limits amount to 1-100
+			// Requirements: 6.5 - Blunt knife limits robbery amount to 1-100
+			amount = GenerateBluntKnifeAmount()
+		} else if hasGreatSword && isGreatSwordCritical {
+			// Great sword critical hit - rob 90% of target's coins
+			// Requirements: 7.6 - Great sword has 0.01% chance to rob 90% of target's coins
+			amount = CalculateGreatSwordCriticalAmount(victim.Balance)
+		} else {
+			amount = GenerateAmount()
+		}
 		// Cap at victim's balance
 		if amount > victim.Balance {
 			amount = victim.Balance
@@ -391,9 +495,13 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 		g.txRepo.Create(ctx, victimID, -amount, TxTypeRobbed, &robbedDesc)
 
 		// Check for thorn armor effect - attacker loses double coins
+		// Requirements: 6.4 - Blunt knife bypasses thorn armor
+		// Requirements: 7.5 - Great sword bypasses thorn armor
 		thornArmorTriggered := false
 		thornDamage := int64(0)
-		if g.itemChecker != nil && g.itemChecker.HasThornArmor(ctx, victimID) {
+		// Blunt knife and great sword bypass thorn armor effect
+		hasBypassDefense := hasBluntKnife || hasGreatSword
+		if g.itemChecker != nil && g.itemChecker.HasThornArmor(ctx, victimID) && !hasBypassDefense {
 			thornDamage = amount * 2
 			// Cap at robber's new balance
 			if thornDamage > newRobber.Balance {
@@ -413,6 +521,18 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 					thornArmorTriggered = true
 				}
 			}
+		}
+
+		// Decrement blunt knife use count after successful use
+		// Requirements: 6.5 - Decrement use count by 1 on each use
+		if hasBluntKnife && g.itemChecker != nil {
+			g.itemChecker.DecrementUseCountByString(ctx, robberID, "blunt_knife")
+		}
+
+		// Decrement great sword use count after successful use
+		// Requirements: 7.6 - Decrement use count by 1 on each use
+		if hasGreatSword && g.itemChecker != nil {
+			g.itemChecker.DecrementUseCountByString(ctx, robberID, "great_sword")
 		}
 
 		// Update victim's protection state
@@ -441,7 +561,17 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 
 		// Build result message
 		msg := fmt.Sprintf("🔫 %s 打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
-		if hasBloodthirst {
+		if hasBluntKnife {
+			msg = fmt.Sprintf("🔪 %s 使用钝刀打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
+		} else if hasGreatSword {
+			if isGreatSwordCritical {
+				// Great sword critical hit message
+				// Requirements: 7.6 - Great sword has 0.01% chance to rob 90% of target's coins
+				msg = fmt.Sprintf("⚔️💥 %s 使用大宝剑打劫了 %s，触发暴击！获得 %d 金币（90%%）！", robberName, victimName, amount)
+			} else {
+				msg = fmt.Sprintf("⚔️ %s 使用大宝剑打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
+			}
+		} else if hasBloodthirst {
 			msg = fmt.Sprintf("🗡️ %s 使用饮血剑打劫了 %s，获得 %d 金币！", robberName, victimName, amount)
 		}
 		if thornArmorTriggered {

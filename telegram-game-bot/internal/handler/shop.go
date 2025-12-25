@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v3"
@@ -115,13 +114,16 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			return c.Respond(&tele.CallbackResponse{Text: "❌ 获取背包失败", ShowAlert: true})
 		}
 
-		// Convert effects to display format
+		// Convert items to display format (use count based)
 		var effects []shop.EffectInfo
-		for _, effect := range inventory.Effects {
-			remaining := time.Until(effect.ExpiresAt).Seconds()
+		for _, item := range inventory.Items {
+			// Skip handcuffs as they are shown separately
+			if item.ItemType == string(shop.ItemHandcuff) {
+				continue
+			}
 			effects = append(effects, shop.EffectInfo{
-				EffectType:   effect.EffectType,
-				RemainingStr: shop.FormatRemainingTime(int64(remaining)),
+				EffectType:   item.ItemType,
+				RemainingStr: shop.FormatUseCount(item.UseCount),
 			})
 		}
 
@@ -145,6 +147,7 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	}
 
 	// Handle item selection
+	// Requirements: 1.2 - Show item detail with daily purchase count
 	if strings.HasPrefix(data, shop.CallbackShopItem) {
 		itemTypeStr := strings.TrimPrefix(data, shop.CallbackShopItem)
 		itemType := shop.ItemType(itemTypeStr)
@@ -155,7 +158,16 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		}
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatItemDetail(item, balance)
+		
+		// Get daily purchase count for items with daily limit
+		var caption string
+		if item.HasDailyLimit() {
+			_, dailyCount, _ := h.shopService.CheckDailyLimit(ctx, sender.ID, itemType)
+			caption = shop.FormatItemDetailWithDailyCount(item, balance, dailyCount)
+		} else {
+			caption = shop.FormatItemDetail(item, balance)
+		}
+		
 		markup := shop.BuildConfirmPanel(itemType)
 		if err := h.editShopPhoto(c, caption, markup); err != nil {
 			log.Error().Err(err).Msg("Failed to edit shop photo")
@@ -164,6 +176,7 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	}
 
 	// Handle purchase
+	// Requirements: 2.9, 3.8, 7.8 - Check daily limit and show error message
 	if strings.HasPrefix(data, shop.CallbackShopBuy) {
 		itemTypeStr := strings.TrimPrefix(data, shop.CallbackShopBuy)
 		itemType := shop.ItemType(itemTypeStr)
@@ -178,6 +191,12 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			if errors.Is(err, service.ErrInsufficientBalance) {
 				return c.Respond(&tele.CallbackResponse{
 					Text:      "❌ 余额不足！",
+					ShowAlert: true,
+				})
+			}
+			if errors.Is(err, service.ErrDailyLimitReached) {
+				return c.Respond(&tele.CallbackResponse{
+					Text:      "❌ 今日购买次数已达上限",
 					ShowAlert: true,
 				})
 			}
@@ -218,13 +237,16 @@ func (h *ShopHandler) HandleBag(c tele.Context) error {
 		return c.Reply("❌ 获取背包失败")
 	}
 
-	// Convert effects to display format
+	// Convert items to display format (use count based)
 	var effects []shop.EffectInfo
-	for _, effect := range inventory.Effects {
-		remaining := time.Until(effect.ExpiresAt).Seconds()
+	for _, item := range inventory.Items {
+		// Skip handcuffs as they are shown separately
+		if item.ItemType == string(shop.ItemHandcuff) {
+			continue
+		}
 		effects = append(effects, shop.EffectInfo{
-			EffectType:   effect.EffectType,
-			RemainingStr: shop.FormatRemainingTime(int64(remaining)),
+			EffectType:   item.ItemType,
+			RemainingStr: shop.FormatUseCount(item.UseCount),
 		})
 	}
 
