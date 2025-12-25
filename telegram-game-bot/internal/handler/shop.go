@@ -361,3 +361,39 @@ func (h *ShopHandler) HandleHandcuff(c tele.Context) error {
 
 	return c.Reply("🔗 " + username + " 对 " + targetName + " 使用了手铐！\n⏱️ 锁定时间: 30分钟\n🚫 " + targetName + " 无法打劫任何人")
 }
+
+// HandleKey handles /key command to unlock self from handcuffs
+func (h *ShopHandler) HandleKey(c tele.Context) error {
+	ctx := context.Background()
+	sender := c.Sender()
+
+	if sender == nil {
+		return nil
+	}
+
+	// Check if user has key (silent fail if not)
+	if !h.shopService.HasKey(ctx, sender.ID) {
+		return nil // Silent ignore
+	}
+
+	// Use key
+	err := h.shopService.UseKey(ctx, sender.ID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotLocked) {
+			return c.Reply("❌ 你没有被锁定")
+		}
+		if errors.Is(err, service.ErrNoKey) {
+			return nil // Silent ignore
+		}
+		log.Error().Err(err).Msg("Key use failed")
+		return c.Reply("❌ 使用失败，请稍后重试")
+	}
+
+	// Get username
+	username := sender.Username
+	if username == "" {
+		username = sender.FirstName
+	}
+
+	return c.Reply("🔑 " + username + " 使用钥匙解开了手铐！\n✅ 你现在可以自由行动了")
+}

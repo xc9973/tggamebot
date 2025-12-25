@@ -12,6 +12,7 @@ type ItemType string
 // Item types - easily extensible for future items
 const (
 	ItemHandcuff         ItemType = "handcuff"        // 手铐 - 锁定目标
+	ItemKey              ItemType = "key"             // 钥匙 - 解除手铐锁定
 	ItemShield           ItemType = "shield"          // 保护罩 - 防止被打劫
 	ItemThornArmor       ItemType = "thorn_armor"     // 荆棘刺甲 - 被打劫时反伤
 	ItemBloodthirstSword ItemType = "bloodthirst"     // 饮血剑 - 提升打劫成功率
@@ -58,6 +59,15 @@ var ShopItems = map[ItemType]ItemConfig{
 		Description:    "锁定目标30分钟，使其无法打劫",
 		Category:       CategoryAttack,
 		DailyLimit:     5,
+	},
+	ItemKey: {
+		Type:        ItemKey,
+		Name:        "钥匙",
+		Emoji:       "🔑",
+		Price:       300,
+		UseCount:    1,
+		Description: "解除自己身上的手铐锁定",
+		Category:    CategoryDefense,
 	},
 	ItemShield: {
 		Type:        ItemShield,
@@ -131,9 +141,10 @@ var ShopItems = map[ItemType]ItemConfig{
 
 // GetAllItems returns all shop items in display order
 func GetAllItems() []ItemConfig {
-	// Define display order - 8 items total
+	// Define display order - 9 items total
 	order := []ItemType{
 		ItemHandcuff,
+		ItemKey,
 		ItemShield,
 		ItemThornArmor,
 		ItemBloodthirstSword,

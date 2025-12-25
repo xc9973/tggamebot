@@ -256,3 +256,13 @@ func (r *InventoryRepository) CleanExpiredLocks(ctx context.Context) (int64, err
 	}
 	return result.RowsAffected(), nil
 }
+
+// RemoveHandcuffLock removes handcuff lock from a user (used by key item)
+func (r *InventoryRepository) RemoveHandcuffLock(ctx context.Context, userID int64) (bool, error) {
+	const query = `DELETE FROM handcuff_locks WHERE target_id = $1`
+	result, err := r.pool.Exec(ctx, query, userID)
+	if err != nil {
+		return false, err
+	}
+	return result.RowsAffected() > 0, nil
+}

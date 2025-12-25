@@ -144,11 +144,12 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/mybets", b.gameHandler.HandleMyBets)
 
 	// Rob game handler
-	b.bot.Handle("/dajie", b.gameHandler.HandleDajie)
+	b.bot.Handle("/dj", b.gameHandler.HandleDajie)
 
 	// Shop handlers
 	b.bot.Handle("/bag", b.shopHandler.HandleBag)
 	b.bot.Handle("/handcuff", b.shopHandler.HandleHandcuff)
+	b.bot.Handle("/key", b.shopHandler.HandleKey)
 
 	// Generic callback handler for sicbo and shop buttons
 	b.bot.Handle(tele.OnCallback, b.handleCallback)

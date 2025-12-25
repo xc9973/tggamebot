@@ -16,9 +16,11 @@ import (
 var (
 	ErrItemNotFound       = errors.New("道具不存在")
 	ErrNoHandcuff         = errors.New("没有手铐道具")
+	ErrNoKey              = errors.New("没有钥匙道具")
 	ErrSelfHandcuff       = errors.New("不能对自己使用手铐")
 	ErrTargetNotFound     = errors.New("目标用户未找到")
 	ErrAlreadyLocked      = errors.New("目标已被锁定")
+	ErrNotLocked          = errors.New("你没有被锁定")
 	ErrDailyLimitReached  = errors.New("今日购买次数已达上限")
 )
 
@@ -306,4 +308,41 @@ func (s *ShopService) CheckDailyLimit(ctx context.Context, userID int64, itemTyp
 
 	canPurchase := purchaseCount < item.DailyLimit
 	return canPurchase, purchaseCount, nil
+}
+
+// UseKey uses a key to unlock self from handcuffs
+func (s *ShopService) UseKey(ctx context.Context, userID int64) error {
+	// Check if user is locked
+	locked, _, _, err := s.inventoryRepo.IsHandcuffed(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if !locked {
+		return ErrNotLocked
+	}
+
+	// Check if user has key
+	count, err := s.inventoryRepo.GetItemCount(ctx, userID, string(shop.ItemKey))
+	if err != nil {
+		return err
+	}
+	if count <= 0 {
+		return ErrNoKey
+	}
+
+	// Consume key
+	success, err := s.inventoryRepo.DecrementItem(ctx, userID, string(shop.ItemKey))
+	if err != nil || !success {
+		return ErrNoKey
+	}
+
+	// Remove handcuff lock
+	_, err = s.inventoryRepo.RemoveHandcuffLock(ctx, userID)
+	return err
+}
+
+// HasKey checks if user has at least one key
+func (s *ShopService) HasKey(ctx context.Context, userID int64) bool {
+	count, err := s.inventoryRepo.GetItemCount(ctx, userID, string(shop.ItemKey))
+	return err == nil && count > 0
 }
