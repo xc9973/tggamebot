@@ -62,16 +62,21 @@ func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 	return markup
 }
 
-// FormatShopMessage creates the shop welcome message
+// FormatShopMessage creates the shop welcome message with ASCII art header
 func FormatShopMessage(balance int64) string {
-	msg := fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
+	msg := "🏪 ═══════════════ 🏪\n"
+	msg += "       💎 商 店 💎\n"
+	msg += "🏪 ═══════════════ 🏪\n\n"
+	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
 	msg += "点击下方按钮购买道具"
 	return msg
 }
 
 // FormatItemDetail creates the item detail message
 func FormatItemDetail(item ItemConfig, balance int64) string {
-	msg := fmt.Sprintf("%s %s\n\n", item.Emoji, item.Name)
+	msg := "🏪 ═══════════════ 🏪\n"
+	msg += fmt.Sprintf("    %s %s\n", item.Emoji, item.Name)
+	msg += "🏪 ═══════════════ 🏪\n\n"
 	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
 	
 	if item.IsTimeBased() {
@@ -94,7 +99,9 @@ func FormatItemDetail(item ItemConfig, balance int64) string {
 
 // FormatInventoryMessage creates the inventory display message
 func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectInfo) string {
-	msg := "🎒 我的背包\n\n"
+	msg := "🎒 ═══════════════ 🎒\n"
+	msg += "       📦 背 包 📦\n"
+	msg += "🎒 ═══════════════ 🎒\n\n"
 	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
 	
 	if handcuffCount == 0 && len(effects) == 0 {

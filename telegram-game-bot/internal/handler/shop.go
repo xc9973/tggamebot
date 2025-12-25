@@ -14,9 +14,6 @@ import (
 	"telegram-game-bot/internal/shop"
 )
 
-// Shop banner image file ID
-const ShopBannerFileID = "AgACAgUAAxkBAAIXnWlMyQYxJ7Pj1TY_YkM0sv0VCVDkAAKDC2sbh7RoVmNP_zn_fF-lAQADAgADeQADNgQ"
-
 // ShopHandler handles shop-related commands
 type ShopHandler struct {
 	shopService    *service.ShopService
@@ -62,25 +59,10 @@ func (h *ShopHandler) HandleShopStart(c tele.Context) error {
 		balance = 0
 	}
 
-	// Send shop panel with image
-	photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
-	photo.Caption = shop.FormatShopMessage(balance)
+	// Send shop panel as text message
+	msg := shop.FormatShopMessage(balance)
 	markup := shop.BuildShopPanel()
-	return c.Send(photo, markup)
-}
-
-// editShopMedia is a helper to edit photo message with new caption and markup
-// It deletes the old message and sends a new one to work around EditMedia limitations
-func (h *ShopHandler) editShopMedia(c tele.Context, caption string, markup *tele.ReplyMarkup) error {
-	// Delete old message
-	if err := c.Delete(); err != nil {
-		log.Debug().Err(err).Msg("Failed to delete old message")
-	}
-	
-	// Send new photo message
-	photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
-	photo.Caption = caption
-	return c.Send(photo, markup)
+	return c.Send(msg, markup)
 }
 
 // HandleShopCallback handles shop button callbacks
@@ -102,10 +84,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	// Handle refresh
 	if data == shop.CallbackShopRefresh {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
+		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		if err := h.editShopMedia(c, caption, markup); err != nil {
-			log.Error().Err(err).Msg("Failed to edit shop media")
+		if _, err := c.Bot().Edit(c.Message(), msg, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop message")
 		}
 		return c.Respond()
 	}
@@ -128,10 +110,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			})
 		}
 
-		caption := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
+		msg := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
 		markup := shop.BuildBagPanel()
-		if err := h.editShopMedia(c, caption, markup); err != nil {
-			log.Error().Err(err).Msg("Failed to edit shop media")
+		if _, err := c.Bot().Edit(c.Message(), msg, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop message")
 		}
 		return c.Respond()
 	}
@@ -139,10 +121,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	// Handle cancel - back to shop
 	if data == shop.CallbackShopCancel {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
+		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		if err := h.editShopMedia(c, caption, markup); err != nil {
-			log.Error().Err(err).Msg("Failed to edit shop media")
+		if _, err := c.Bot().Edit(c.Message(), msg, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop message")
 		}
 		return c.Respond()
 	}
@@ -158,10 +140,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		}
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatItemDetail(item, balance)
+		msg := shop.FormatItemDetail(item, balance)
 		markup := shop.BuildConfirmPanel(itemType)
-		if err := h.editShopMedia(c, caption, markup); err != nil {
-			log.Error().Err(err).Msg("Failed to edit shop media")
+		if _, err := c.Bot().Edit(c.Message(), msg, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop message")
 		}
 		return c.Respond()
 	}
@@ -197,9 +179,9 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		})
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
+		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		h.editShopMedia(c, caption, markup)
+		c.Bot().Edit(c.Message(), msg, markup)
 		return nil
 	}
 
