@@ -152,48 +152,6 @@ func (b *Bot) registerHandlers() {
 
 	// Generic callback handler for sicbo and shop buttons
 	b.bot.Handle(tele.OnCallback, b.handleCallback)
-
-	// Photo handler - returns file_id for admin use
-	b.bot.Handle(tele.OnPhoto, b.handlePhoto)
-}
-
-// handlePhoto handles photo messages and returns file_id (admin only)
-func (b *Bot) handlePhoto(c tele.Context) error {
-	sender := c.Sender()
-	if sender == nil {
-		return nil
-	}
-
-	// Log for debugging
-	log.Debug().
-		Int64("user_id", sender.ID).
-		Msg("Received photo message")
-
-	// Only respond to admins
-	isAdmin := false
-	for _, adminID := range b.cfg.Admin.IDs {
-		if sender.ID == adminID {
-			isAdmin = true
-			break
-		}
-	}
-	
-	log.Debug().
-		Int64("user_id", sender.ID).
-		Bool("is_admin", isAdmin).
-		Interface("admin_ids", b.cfg.Admin.IDs).
-		Msg("Admin check for photo")
-
-	if !isAdmin {
-		return nil
-	}
-
-	photo := c.Message().Photo
-	if photo == nil {
-		return nil
-	}
-
-	return c.Reply(fmt.Sprintf("📷 File ID:\n`%s`", photo.FileID), tele.ModeMarkdown)
 }
 
 // handleStart routes /start to shop (private) or account (group)
