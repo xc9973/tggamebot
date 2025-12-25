@@ -21,30 +21,31 @@ func BuildShopPanel() *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	
 	items := GetAllItems()
-	var rows []tele.Row
+	var rows [][]tele.InlineButton
 	
 	// Create a button for each item (2 per row)
-	var currentRow []tele.Btn
+	var currentRow []tele.InlineButton
 	for i, item := range items {
-		btn := markup.Data(
-			fmt.Sprintf("%s %s (%d💰)", item.Emoji, item.Name, item.Price),
-			CallbackShopItem+string(item.Type),
-		)
+		btn := tele.InlineButton{
+			Text: fmt.Sprintf("%s %s (%d💰)", item.Emoji, item.Name, item.Price),
+			Data: CallbackShopItem + string(item.Type),
+		}
 		currentRow = append(currentRow, btn)
 		
 		// 2 buttons per row
 		if len(currentRow) == 2 || i == len(items)-1 {
-			rows = append(rows, markup.Row(currentRow...))
+			rows = append(rows, currentRow)
 			currentRow = nil
 		}
 	}
 	
 	// Add bag and refresh buttons
-	bagBtn := markup.Data("🎒 我的背包", CallbackShopBag)
-	refreshBtn := markup.Data("🔄 刷新", CallbackShopRefresh)
-	rows = append(rows, markup.Row(bagBtn, refreshBtn))
+	rows = append(rows, []tele.InlineButton{
+		{Text: "🎒 我的背包", Data: CallbackShopBag},
+		{Text: "🔄 刷新", Data: CallbackShopRefresh},
+	})
 	
-	markup.Inline(rows...)
+	markup.InlineKeyboard = rows
 	return markup
 }
 
@@ -52,12 +53,12 @@ func BuildShopPanel() *tele.ReplyMarkup {
 func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	
-	buyBtn := markup.Data("✅ 购买", CallbackShopBuy+string(itemType))
-	cancelBtn := markup.Data("❌ 取消", CallbackShopCancel)
-	
-	markup.Inline(
-		markup.Row(buyBtn, cancelBtn),
-	)
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{
+			{Text: "✅ 购买", Data: CallbackShopBuy + string(itemType)},
+			{Text: "❌ 取消", Data: CallbackShopCancel},
+		},
+	}
 	return markup
 }
 
@@ -121,12 +122,12 @@ func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectIn
 func BuildBagPanel() *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	
-	backBtn := markup.Data("🔙 返回商店", CallbackShopCancel)
-	refreshBtn := markup.Data("🔄 刷新", CallbackShopBag)
-	
-	markup.Inline(
-		markup.Row(backBtn, refreshBtn),
-	)
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{
+			{Text: "🔙 返回商店", Data: CallbackShopCancel},
+			{Text: "🔄 刷新", Data: CallbackShopBag},
+		},
+	}
 	return markup
 }
 

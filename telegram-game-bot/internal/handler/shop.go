@@ -14,6 +14,9 @@ import (
 	"telegram-game-bot/internal/shop"
 )
 
+// Shop banner image file ID
+const ShopBannerFileID = "AgACAgUAAxkBAAIXnWlMyQYxJ7Pj1TY_YkM0sv0VCVDkAAKDC2sbh7RoVmNP_zn_fF-lAQADAgADeQADNgQ"
+
 // ShopHandler handles shop-related commands
 type ShopHandler struct {
 	shopService    *service.ShopService
@@ -59,10 +62,25 @@ func (h *ShopHandler) HandleShopStart(c tele.Context) error {
 		balance = 0
 	}
 
-	// Send shop panel (text only for stable editing)
-	msg := shop.FormatShopMessage(balance)
+	// Send shop panel with image
+	photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
+	photo.Caption = shop.FormatShopMessage(balance)
 	markup := shop.BuildShopPanel()
-	return c.Send(msg, markup)
+	return c.Send(photo, markup)
+}
+
+// editShopMedia is a helper to edit photo message with new caption and markup
+// It deletes the old message and sends a new one to work around EditMedia limitations
+func (h *ShopHandler) editShopMedia(c tele.Context, caption string, markup *tele.ReplyMarkup) error {
+	// Delete old message
+	if err := c.Delete(); err != nil {
+		log.Debug().Err(err).Msg("Failed to delete old message")
+	}
+	
+	// Send new photo message
+	photo := &tele.Photo{File: tele.File{FileID: ShopBannerFileID}}
+	photo.Caption = caption
+	return c.Send(photo, markup)
 }
 
 // HandleShopCallback handles shop button callbacks
@@ -84,9 +102,12 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 	// Handle refresh
 	if data == shop.CallbackShopRefresh {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatShopMessage(balance)
+		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(msg, markup)
+		if err := h.editShopMedia(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop media")
+		}
+		return c.Respond()
 	}
 
 	// Handle bag view
@@ -107,17 +128,23 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			})
 		}
 
-		msg := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
+		caption := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
 		markup := shop.BuildBagPanel()
-		return c.Edit(msg, markup)
+		if err := h.editShopMedia(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop media")
+		}
+		return c.Respond()
 	}
 
 	// Handle cancel - back to shop
 	if data == shop.CallbackShopCancel {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatShopMessage(balance)
+		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(msg, markup)
+		if err := h.editShopMedia(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop media")
+		}
+		return c.Respond()
 	}
 
 	// Handle item selection
@@ -131,9 +158,12 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		}
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatItemDetail(item, balance)
+		caption := shop.FormatItemDetail(item, balance)
 		markup := shop.BuildConfirmPanel(itemType)
-		return c.Edit(msg, markup)
+		if err := h.editShopMedia(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop media")
+		}
+		return c.Respond()
 	}
 
 	// Handle purchase
@@ -167,9 +197,10 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		})
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		msg := shop.FormatShopMessage(balance)
+		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
-		return c.Edit(msg, markup)
+		h.editShopMedia(c, caption, markup)
+		return nil
 	}
 
 	return nil
