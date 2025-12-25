@@ -59,6 +59,21 @@ func (h *ShopHandler) HandleShopStart(c tele.Context) error {
 		balance = 0
 	}
 
+	// Send welcome message with commands first
+	welcomeMsg := "🎮 欢迎使用游戏机器人！\n"
+	welcomeMsg += "━━━━━━━━━━━━━━━\n"
+	welcomeMsg += "📋 可用命令:\n"
+	welcomeMsg += "/dice <金额> - 骰子游戏\n"
+	welcomeMsg += "/slot <金额> - 老虎机\n"
+	welcomeMsg += "/balance - 查看余额\n"
+	welcomeMsg += "/my - 查看个人信息\n"
+	welcomeMsg += "/daily - 每日签到\n"
+	welcomeMsg += "/bag - 查看背包\n"
+	welcomeMsg += "━━━━━━━━━━━━━━━\n"
+	welcomeMsg += "👇 点击下方按钮进入商店购买道具"
+
+	c.Send(welcomeMsg)
+
 	// Send shop panel
 	msg := shop.FormatShopMessage(balance)
 	markup := shop.BuildShopPanel()
