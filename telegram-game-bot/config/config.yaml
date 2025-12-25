@@ -17,7 +17,8 @@ database:
 
 admin:
   # Telegram user IDs with admin privileges
-  ids: []
+  ids:
+    - 327294302
 
 whitelist:
   # Chat IDs where bot is allowed to operate

@@ -164,6 +164,11 @@ func (b *Bot) handlePhoto(c tele.Context) error {
 		return nil
 	}
 
+	// Log for debugging
+	log.Debug().
+		Int64("user_id", sender.ID).
+		Msg("Received photo message")
+
 	// Only respond to admins
 	isAdmin := false
 	for _, adminID := range b.cfg.Admin.IDs {
@@ -172,6 +177,13 @@ func (b *Bot) handlePhoto(c tele.Context) error {
 			break
 		}
 	}
+	
+	log.Debug().
+		Int64("user_id", sender.ID).
+		Bool("is_admin", isAdmin).
+		Interface("admin_ids", b.cfg.Admin.IDs).
+		Msg("Admin check for photo")
+
 	if !isAdmin {
 		return nil
 	}
