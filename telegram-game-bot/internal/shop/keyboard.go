@@ -62,21 +62,16 @@ func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 	return markup
 }
 
-// FormatShopMessage creates the shop welcome message with ASCII art header
+// FormatShopMessage creates the shop welcome message
 func FormatShopMessage(balance int64) string {
-	msg := "┏━━━━━━━━━━━━━━━━┓\n"
-	msg += "┃    🛒 游戏商店    ┃\n"
-	msg += "┗━━━━━━━━━━━━━━━━┛\n\n"
-	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
+	msg := fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
 	msg += "👇 选择要购买的道具"
 	return msg
 }
 
 // FormatItemDetail creates the item detail message
 func FormatItemDetail(item ItemConfig, balance int64) string {
-	msg := "┏━━━━━━━━━━━━━━━━┓\n"
-	msg += fmt.Sprintf("┃  %s %s\n", item.Emoji, item.Name)
-	msg += "┗━━━━━━━━━━━━━━━━┛\n\n"
+	msg := fmt.Sprintf("%s %s\n\n", item.Emoji, item.Name)
 	msg += fmt.Sprintf("💰 价格: %d 金币\n", item.Price)
 	
 	if item.IsTimeBased() {
@@ -99,19 +94,16 @@ func FormatItemDetail(item ItemConfig, balance int64) string {
 
 // FormatInventoryMessage creates the inventory display message
 func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectInfo) string {
-	msg := "┏━━━━━━━━━━━━━━━━┓\n"
-	msg += "┃    🎒 我的背包    ┃\n"
-	msg += "┗━━━━━━━━━━━━━━━━┛\n\n"
+	msg := "🎒 我的背包\n\n"
 	msg += fmt.Sprintf("💰 余额: %d 金币\n\n", balance)
 	
 	if handcuffCount == 0 && len(effects) == 0 {
 		msg += "📭 背包空空如也~"
 	} else {
-		msg += "📦 道具列表:\n"
 		if handcuffCount > 0 {
 			item, _ := GetItem(ItemHandcuff)
-			msg += fmt.Sprintf("  • %s %s ×%d\n", item.Emoji, item.Name, handcuffCount)
-			msg += "    用法: 回复消息 /handcuff\n"
+			msg += fmt.Sprintf("%s %s ×%d\n", item.Emoji, item.Name, handcuffCount)
+			msg += "用法: 回复消息 /handcuff\n"
 		}
 		
 		for _, effect := range effects {
@@ -119,7 +111,7 @@ func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectIn
 			if !ok {
 				continue
 			}
-			msg += fmt.Sprintf("  • %s %s (%s)\n", item.Emoji, item.Name, effect.RemainingStr)
+			msg += fmt.Sprintf("%s %s (%s)\n", item.Emoji, item.Name, effect.RemainingStr)
 		}
 	}
 	
