@@ -165,7 +165,7 @@ func (r *TransactionRepository) GetDailyStats(ctx context.Context, date time.Tim
 		SELECT t.user_id, u.username, COALESCE(SUM(t.amount), 0) as net_profit
 		FROM transactions t
 		JOIN users u ON t.user_id = u.telegram_id
-		WHERE t.type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet')
+		WHERE t.type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet', 'rob', 'robbed')
 		  AND t.created_at >= $1
 		  AND t.created_at < $2
 		GROUP BY t.user_id, u.username
@@ -210,7 +210,7 @@ func (r *TransactionRepository) GetDailyWinners(ctx context.Context, date time.T
 		SELECT t.user_id, u.username, COALESCE(SUM(t.amount), 0) as net_profit
 		FROM transactions t
 		JOIN users u ON t.user_id = u.telegram_id
-		WHERE t.type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet')
+		WHERE t.type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet', 'rob', 'robbed')
 		  AND t.created_at >= $1
 		  AND t.created_at < $2
 		GROUP BY t.user_id, u.username
@@ -257,7 +257,7 @@ func (r *TransactionRepository) GetDailyLosers(ctx context.Context, date time.Ti
 		SELECT t.user_id, u.username, COALESCE(SUM(t.amount), 0) as net_profit
 		FROM transactions t
 		JOIN users u ON t.user_id = u.telegram_id
-		WHERE t.type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet')
+		WHERE t.type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet', 'rob', 'robbed')
 		  AND t.created_at >= $1
 		  AND t.created_at < $2
 		GROUP BY t.user_id, u.username
@@ -302,7 +302,7 @@ func (r *TransactionRepository) GetUserDailyProfit(ctx context.Context, userID i
 		SELECT COALESCE(SUM(amount), 0)
 		FROM transactions
 		WHERE user_id = $1
-		  AND type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet')
+		  AND type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet', 'rob', 'robbed')
 		  AND created_at >= $2
 		  AND created_at < $3
 	`

@@ -45,10 +45,12 @@ const (
 	TxTypeAdminAdd  = "admin_add"  // Admin added balance
 	TxTypeAdminSub  = "admin_sub"  // Admin subtracted balance
 	TxTypeAdminSet  = "admin_set"  // Admin set balance
+	TxTypeRob       = "rob"        // Robbery - robber gains coins
+	TxTypeRobbed    = "robbed"     // Robbery - victim loses coins
 )
 
 // GameTransactionTypes returns the transaction types that count towards daily game rankings.
 // Requirements: 11.5 - Only count game-related transactions (exclude transfers, daily rewards)
 func GameTransactionTypes() []string {
-	return []string{TxTypeDice, TxTypeSlot, TxTypeSicBoWin, TxTypeSicBoBet}
+	return []string{TxTypeDice, TxTypeSlot, TxTypeSicBoWin, TxTypeSicBoBet, TxTypeRob, TxTypeRobbed}
 }

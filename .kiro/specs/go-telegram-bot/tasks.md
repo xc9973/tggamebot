@@ -130,7 +130,7 @@
     - 白名单检查中间件
     - 管理员权限中间件
     - _Requirements: 6.4, 7.1, 7.2_
-  - [ ]* 11.3 编写 Property Test: 权限检查
+  - [x] 11.3 编写 Property Test: 权限检查
     - **Property 11: Admin Permission Check**
     - **Property 12: Whitelist Enforcement**
     - **Validates: Requirements 6.4, 7.1**

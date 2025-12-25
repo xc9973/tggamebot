@@ -61,7 +61,7 @@ func (h *RankingHandler) HandleDailyTop(c tele.Context) error {
 				displayName = fmt.Sprintf("User%d", winner.UserID)
 			}
 
-			msg += fmt.Sprintf("%s @%s: +%d\n", rank, displayName, winner.NetProfit)
+			msg += fmt.Sprintf("%s %s: +%d\n", rank, displayName, winner.NetProfit)
 		}
 	}
 
@@ -80,7 +80,7 @@ func (h *RankingHandler) HandleDailyTop(c tele.Context) error {
 				displayName = fmt.Sprintf("User%d", loser.UserID)
 			}
 
-			msg += fmt.Sprintf("%s @%s: %d\n", rank, displayName, loser.NetProfit)
+			msg += fmt.Sprintf("%s %s: %d\n", rank, displayName, loser.NetProfit)
 		}
 	}
 

@@ -16,6 +16,7 @@ import (
 	"telegram-game-bot/internal/config"
 	"telegram-game-bot/internal/game"
 	"telegram-game-bot/internal/game/dice"
+	"telegram-game-bot/internal/game/rob"
 	"telegram-game-bot/internal/game/sicbo"
 	"telegram-game-bot/internal/game/slot"
 	"telegram-game-bot/internal/pkg/db"
@@ -95,6 +96,9 @@ func main() {
 	// Initialize SicBo game (multiplayer)
 	sicboGame := sicbo.New()
 
+	// Initialize Rob game
+	robGame := rob.NewRobGame(userRepo, txRepo, userLock)
+
 	log.Info().
 		Int("game_count", gameRegistry.Count()).
 		Strs("games", gameRegistry.Commands()).
@@ -108,6 +112,7 @@ func main() {
 		RankingService:  rankingService,
 		GameRegistry:    gameRegistry,
 		SicBoGame:       sicboGame,
+		RobGame:         robGame,
 		UserLock:        userLock,
 	}
 
@@ -184,7 +189,7 @@ func runMigrations(ctx context.Context, pool *db.Pool) error {
 			SUM(amount) as net_profit,
 			DATE(created_at) as game_date
 		FROM transactions
-		WHERE type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet')
+		WHERE type IN ('dice', 'slot', 'sicbo_win', 'sicbo_bet', 'rob', 'robbed')
 		GROUP BY user_id, DATE(created_at);
 	`)
 	if err != nil {

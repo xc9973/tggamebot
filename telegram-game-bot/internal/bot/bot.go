@@ -12,6 +12,7 @@ import (
 
 	"telegram-game-bot/internal/config"
 	"telegram-game-bot/internal/game"
+	"telegram-game-bot/internal/game/rob"
 	"telegram-game-bot/internal/game/sicbo"
 	"telegram-game-bot/internal/handler"
 	"telegram-game-bot/internal/pkg/lock"
@@ -27,6 +28,7 @@ type Bot struct {
 	rankingService  *service.RankingService
 	gameRegistry    *game.Registry
 	sicboGame       *sicbo.SicBoGame
+	robGame         *rob.RobGame
 	userLock        *lock.UserLock
 
 	// Handlers
@@ -45,6 +47,7 @@ type Dependencies struct {
 	RankingService  *service.RankingService
 	GameRegistry    *game.Registry
 	SicBoGame       *sicbo.SicBoGame
+	RobGame         *rob.RobGame
 	UserLock        *lock.UserLock
 }
 
@@ -73,6 +76,7 @@ func New(deps *Dependencies) (*Bot, error) {
 		rankingService:  deps.RankingService,
 		gameRegistry:    deps.GameRegistry,
 		sicboGame:       deps.SicBoGame,
+		robGame:         deps.RobGame,
 		userLock:        deps.UserLock,
 	}
 
@@ -81,7 +85,7 @@ func New(deps *Dependencies) (*Bot, error) {
 	b.transferHandler = handler.NewTransferHandler(deps.AccountService, deps.TransferService, deps.UserLock)
 	b.adminHandler = handler.NewAdminHandler(deps.AccountService, deps.UserLock)
 	b.rankingHandler = handler.NewRankingHandler(deps.RankingService)
-	b.gameHandler = handler.NewGameHandler(deps.Config, deps.AccountService, deps.GameRegistry, deps.SicBoGame, deps.UserLock)
+	b.gameHandler = handler.NewGameHandler(deps.Config, deps.AccountService, deps.GameRegistry, deps.SicBoGame, deps.RobGame, deps.UserLock)
 
 	// Register middleware
 	b.registerMiddleware()
@@ -132,6 +136,9 @@ func (b *Bot) registerHandlers() {
 	b.bot.Handle("/sicbo", b.gameHandler.HandleSicBoStart)
 	b.bot.Handle("/sicbo_settle", b.gameHandler.HandleSicBoSettle)
 	b.bot.Handle("/mybets", b.gameHandler.HandleMyBets)
+
+	// Rob game handler
+	b.bot.Handle("/dajie", b.gameHandler.HandleDajie)
 
 	// Generic callback handler for sicbo buttons
 	b.bot.Handle(tele.OnCallback, b.gameHandler.HandleSicBoCallback)

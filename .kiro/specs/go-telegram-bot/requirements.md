@@ -143,3 +143,4 @@
 3. THE Bot SHALL show top 10 winners (most profit) and top 10 losers (most loss)
 4. THE Bot SHALL reset daily statistics at midnight (configurable timezone)
 5. THE Bot SHALL only count game-related transactions (exclude transfers, daily rewards)
+6. THE Bot SHALL display username without @ prefix to avoid mentioning users in group chat

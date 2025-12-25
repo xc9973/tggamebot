@@ -17,6 +17,7 @@ import (
 	"telegram-game-bot/internal/config"
 	"telegram-game-bot/internal/game"
 	"telegram-game-bot/internal/game/dice"
+	"telegram-game-bot/internal/game/rob"
 	"telegram-game-bot/internal/game/sicbo"
 	"telegram-game-bot/internal/game/slot"
 	"telegram-game-bot/internal/model"
@@ -56,6 +57,7 @@ type GameHandler struct {
 	accountService  *service.AccountService
 	gameRegistry    *game.Registry
 	sicboGame       *sicbo.SicBoGame
+	robGame         *rob.RobGame
 	userLock        *lock.UserLock
 	cooldowns       sync.Map // map[string]time.Time - key: "userID:game"
 	trackedMessages []TrackedMessage
@@ -69,6 +71,7 @@ func NewGameHandler(
 	accountService *service.AccountService,
 	gameRegistry *game.Registry,
 	sicboGame *sicbo.SicBoGame,
+	robGame *rob.RobGame,
 	userLock *lock.UserLock,
 ) *GameHandler {
 	h := &GameHandler{
@@ -76,6 +79,7 @@ func NewGameHandler(
 		accountService:  accountService,
 		gameRegistry:    gameRegistry,
 		sicboGame:       sicboGame,
+		robGame:         robGame,
 		userLock:        userLock,
 		trackedMessages: make([]TrackedMessage, 0),
 	}
@@ -916,4 +920,72 @@ func (h *GameHandler) HandleMyBets(c tele.Context) error {
 
 	msg := sicbo.FormatMyBets(userBets)
 	return c.Reply(msg)
+}
+
+// HandleDajie handles the /dajie command for robbery game.
+// Requirements: Rob Game - Allow users to rob coins from other users
+func (h *GameHandler) HandleDajie(c tele.Context) error {
+	ctx := context.Background()
+	sender := c.Sender()
+	chat := c.Chat()
+
+	if sender == nil || chat == nil {
+		return nil
+	}
+
+	// Get robber's username
+	robberName := sender.Username
+	if robberName == "" {
+		robberName = sender.FirstName
+	}
+
+	// Ensure robber exists
+	_, _, err := h.accountService.EnsureUser(ctx, sender.ID, robberName)
+	if err != nil {
+		return c.Reply("❌ 操作失败，请稍后重试")
+	}
+
+	// Determine victim from reply or @mention
+	var victimID int64
+	var victimName string
+
+	// Check if replying to a message
+	if c.Message().ReplyTo != nil && c.Message().ReplyTo.Sender != nil {
+		victimID = c.Message().ReplyTo.Sender.ID
+		victimName = c.Message().ReplyTo.Sender.Username
+		if victimName == "" {
+			victimName = c.Message().ReplyTo.Sender.FirstName
+		}
+	} else {
+		// Check for @mention in args
+		args := c.Args()
+		if len(args) < 1 {
+			return c.Reply("❌ 用法: /dajie (回复消息) 或 /dajie @用户名")
+		}
+
+		// Parse @username
+		mention := args[0]
+		if !strings.HasPrefix(mention, "@") {
+			return c.Reply("❌ 请使用 @用户名 格式")
+		}
+
+		// We need to find the user by username - this is tricky in Telegram
+		// For now, we'll require reply-to-message method
+		return c.Reply("❌ 请回复目标用户的消息来发起打劫")
+	}
+
+	// Execute robbery
+	result, err := h.robGame.Rob(ctx, sender.ID, victimID, robberName, victimName)
+	if err != nil {
+		log.Error().Err(err).Int64("robber", sender.ID).Int64("victim", victimID).Msg("Robbery failed")
+		return c.Reply("❌ 打劫失败，请稍后重试")
+	}
+
+	// Send result
+	if result.Success {
+		msg := result.Message + fmt.Sprintf("\n💰 你的余额: %d", result.NewBalance)
+		return c.Reply(msg)
+	}
+
+	return c.Reply("❌ " + result.Message)
 }

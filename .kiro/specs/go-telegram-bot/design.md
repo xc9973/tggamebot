@@ -354,13 +354,13 @@ type DailyRank struct {
 
 ### Property 9: SicBo Payout Calculation
 
-*For any* dice result [d1, d2, d3] where each di ∈ [1,6] and bet amount A:
-- Single number N: payout = A * count(N) if count > 0, else -A
-- Big bet: payout = A if sum ∈ [11,17] AND not triple, else -A
-- Small bet: payout = A if sum ∈ [4,10] AND not triple, else -A
+*For any* dice result [d1, d2, d3] where each di ∈ [1,6] and fixed bet amount 100:
+- Single number N: payout = 100 * count(N) if count > 0, else -100
+- Big bet: payout = 100 if sum ∈ [11,17] AND not triple, else -100
+- Small bet: payout = 100 if sum ∈ [4,10] AND not triple, else -100
 - Triple detection: is_triple = (d1 == d2 == d3)
 
-**Validates: Requirements 5.3, 5.4**
+**Validates: Requirements 5.3, 5.4, 5.5**
 
 ### Property 10: SicBo Bet Accumulation
 
