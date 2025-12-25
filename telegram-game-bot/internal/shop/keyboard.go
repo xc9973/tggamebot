@@ -13,6 +13,7 @@ const (
 	CallbackShopBuy     = "shop_buy:"     // shop_buy:handcuff
 	CallbackShopCancel  = "shop_cancel"   // shop_cancel
 	CallbackShopRefresh = "shop_refresh"  // shop_refresh
+	CallbackShopBag     = "shop_bag"      // shop_bag - view inventory
 )
 
 // BuildShopPanel creates the main shop panel with item buttons
@@ -38,9 +39,10 @@ func BuildShopPanel() *tele.ReplyMarkup {
 		}
 	}
 	
-	// Add refresh button
+	// Add bag and refresh buttons
+	bagBtn := markup.Data("🎒 我的背包", CallbackShopBag)
 	refreshBtn := markup.Data("🔄 刷新", CallbackShopRefresh)
-	rows = append(rows, markup.Row(refreshBtn))
+	rows = append(rows, markup.Row(bagBtn, refreshBtn))
 	
 	markup.Inline(rows...)
 	return markup
@@ -95,30 +97,45 @@ func FormatItemDetail(item ItemConfig, balance int64) string {
 }
 
 // FormatInventoryMessage creates the inventory display message
-func FormatInventoryMessage(handcuffCount int, effects []EffectInfo) string {
-	if handcuffCount == 0 && len(effects) == 0 {
-		return "🎒 背包为空\n\n去商店购买道具吧！私聊我发送 /start"
-	}
-	
+func FormatInventoryMessage(balance int64, handcuffCount int, effects []EffectInfo) string {
 	msg := "🎒 我的背包\n"
 	msg += "━━━━━━━━━━━━━━━\n"
+	msg += fmt.Sprintf("💰 余额: %d 金币\n", balance)
+	msg += "━━━━━━━━━━━━━━━\n"
 	
-	if handcuffCount > 0 {
-		item, _ := GetItem(ItemHandcuff)
-		msg += fmt.Sprintf("%s %s x%d\n", item.Emoji, item.Name, handcuffCount)
-		msg += "   使用方法: 回复目标消息发送 /handcuff\n"
-	}
-	
-	for _, effect := range effects {
-		item, ok := GetItem(ItemType(effect.EffectType))
-		if !ok {
-			continue
+	if handcuffCount == 0 && len(effects) == 0 {
+		msg += "📦 暂无道具\n"
+	} else {
+		if handcuffCount > 0 {
+			item, _ := GetItem(ItemHandcuff)
+			msg += fmt.Sprintf("%s %s x%d\n", item.Emoji, item.Name, handcuffCount)
+			msg += "   使用: 回复目标消息发送 /handcuff\n"
 		}
-		msg += fmt.Sprintf("%s %s\n", item.Emoji, item.Name)
-		msg += fmt.Sprintf("   剩余时间: %s\n", effect.RemainingStr)
+		
+		for _, effect := range effects {
+			item, ok := GetItem(ItemType(effect.EffectType))
+			if !ok {
+				continue
+			}
+			msg += fmt.Sprintf("%s %s\n", item.Emoji, item.Name)
+			msg += fmt.Sprintf("   ⏱️ 剩余: %s\n", effect.RemainingStr)
+		}
 	}
 	
 	return msg
+}
+
+// BuildBagPanel creates the bag panel with back button
+func BuildBagPanel() *tele.ReplyMarkup {
+	markup := &tele.ReplyMarkup{}
+	
+	backBtn := markup.Data("🔙 返回商店", CallbackShopCancel)
+	refreshBtn := markup.Data("🔄 刷新", CallbackShopBag)
+	
+	markup.Inline(
+		markup.Row(backBtn, refreshBtn),
+	)
+	return markup
 }
 
 // EffectInfo holds effect display information

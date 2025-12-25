@@ -59,21 +59,6 @@ func (h *ShopHandler) HandleShopStart(c tele.Context) error {
 		balance = 0
 	}
 
-	// Send welcome message with commands first
-	welcomeMsg := "🎮 欢迎使用游戏机器人！\n"
-	welcomeMsg += "━━━━━━━━━━━━━━━\n"
-	welcomeMsg += "📋 可用命令:\n"
-	welcomeMsg += "/dice <金额> - 骰子游戏\n"
-	welcomeMsg += "/slot <金额> - 老虎机\n"
-	welcomeMsg += "/balance - 查看余额\n"
-	welcomeMsg += "/my - 查看个人信息\n"
-	welcomeMsg += "/daily - 每日签到\n"
-	welcomeMsg += "/bag - 查看背包\n"
-	welcomeMsg += "━━━━━━━━━━━━━━━\n"
-	welcomeMsg += "👇 点击下方按钮进入商店购买道具"
-
-	c.Send(welcomeMsg)
-
 	// Send shop panel
 	msg := shop.FormatShopMessage(balance)
 	markup := shop.BuildShopPanel()
@@ -97,6 +82,29 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
 		msg := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
+		return c.Edit(msg, markup)
+	}
+
+	// Handle bag view
+	if data == shop.CallbackShopBag {
+		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		inventory, err := h.shopService.GetUserInventory(ctx, sender.ID)
+		if err != nil {
+			return c.Respond(&tele.CallbackResponse{Text: "❌ 获取背包失败", ShowAlert: true})
+		}
+
+		// Convert effects to display format
+		var effects []shop.EffectInfo
+		for _, effect := range inventory.Effects {
+			remaining := time.Until(effect.ExpiresAt).Seconds()
+			effects = append(effects, shop.EffectInfo{
+				EffectType:   effect.EffectType,
+				RemainingStr: shop.FormatRemainingTime(int64(remaining)),
+			})
+		}
+
+		msg := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
+		markup := shop.BuildBagPanel()
 		return c.Edit(msg, markup)
 	}
 
@@ -172,6 +180,7 @@ func (h *ShopHandler) HandleBag(c tele.Context) error {
 		return nil
 	}
 
+	balance, _ := h.accountService.GetBalance(ctx, sender.ID)
 	inventory, err := h.shopService.GetUserInventory(ctx, sender.ID)
 	if err != nil {
 		return c.Reply("❌ 获取背包失败")
@@ -187,7 +196,7 @@ func (h *ShopHandler) HandleBag(c tele.Context) error {
 		})
 	}
 
-	msg := shop.FormatInventoryMessage(inventory.HandcuffCount, effects)
+	msg := shop.FormatInventoryMessage(balance, inventory.HandcuffCount, effects)
 	return c.Reply(msg)
 }
 
