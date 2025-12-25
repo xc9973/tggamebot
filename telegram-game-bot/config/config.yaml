@@ -22,7 +22,8 @@ admin:
 whitelist:
   # Chat IDs where bot is allowed to operate
   # Empty list means all chats are allowed
-  chats: []
+  chats:
+    - -1002276571496  # 你的群组ID
 
 daily:
   reward: 500
