@@ -9,23 +9,58 @@ import (
 
 // Callback data prefixes
 const (
-	CallbackShopItem    = "shop_item:"    // shop_item:handcuff
-	CallbackShopBuy     = "shop_buy:"     // shop_buy:handcuff
-	CallbackShopCancel  = "shop_cancel"   // shop_cancel
-	CallbackShopRefresh = "shop_refresh"  // shop_refresh
-	CallbackShopBag     = "shop_bag"      // shop_bag - view inventory
+	CallbackShopItem     = "shop_item:"     // shop_item:handcuff
+	CallbackShopBuy      = "shop_buy:"      // shop_buy:handcuff
+	CallbackShopCancel   = "shop_cancel"    // shop_cancel
+	CallbackShopRefresh  = "shop_refresh"   // shop_refresh
+	CallbackShopBag      = "shop_bag"       // shop_bag - view inventory
+	CallbackShopGoods    = "shop_goods"     // shop_goods - view goods categories
+	CallbackShopAttack   = "shop_attack"    // shop_attack - attack items
+	CallbackShopDefense  = "shop_defense"   // shop_defense - defense items
+	CallbackShopHome     = "shop_home"      // shop_home - back to main menu
 )
 
-// BuildShopPanel creates the main shop panel with item buttons
-// Requirements: 1.1, 1.2 - Display 8 items with use count and daily limit info
+// BuildShopPanel creates the main shop panel (first level: Bag | Goods)
+// Requirements: 1.1, 1.2 - Display main menu with bag and goods options
 func BuildShopPanel() *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	
-	items := GetAllItems()
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{
+			{Text: "🎒 我的背包", Data: CallbackShopBag},
+			{Text: "🛒 商品", Data: CallbackShopGoods},
+		},
+		{
+			{Text: "🔄 刷新", Data: CallbackShopRefresh},
+		},
+	}
+	return markup
+}
+
+// BuildGoodsCategoryPanel creates the goods category panel (second level: Attack | Defense)
+func BuildGoodsCategoryPanel() *tele.ReplyMarkup {
+	markup := &tele.ReplyMarkup{}
+	
+	markup.InlineKeyboard = [][]tele.InlineButton{
+		{
+			{Text: "⚔️ 攻击道具", Data: CallbackShopAttack},
+			{Text: "🛡️ 防御道具", Data: CallbackShopDefense},
+		},
+		{
+			{Text: "🔙 返回", Data: CallbackShopHome},
+		},
+	}
+	return markup
+}
+
+// BuildAttackItemsPanel creates the attack items panel
+func BuildAttackItemsPanel() *tele.ReplyMarkup {
+	markup := &tele.ReplyMarkup{}
+	
+	items := GetItemsByCategory(CategoryAttack)
 	var rows [][]tele.InlineButton
 	
 	// Create a button for each item (2 per row)
-	// Display: emoji name (price💰)
 	var currentRow []tele.InlineButton
 	for i, item := range items {
 		btn := tele.InlineButton{
@@ -34,17 +69,50 @@ func BuildShopPanel() *tele.ReplyMarkup {
 		}
 		currentRow = append(currentRow, btn)
 		
-		// 2 buttons per row
 		if len(currentRow) == 2 || i == len(items)-1 {
 			rows = append(rows, currentRow)
 			currentRow = nil
 		}
 	}
 	
-	// Add bag and refresh buttons
+	// Add back button
 	rows = append(rows, []tele.InlineButton{
-		{Text: "🎒 我的背包", Data: CallbackShopBag},
-		{Text: "🔄 刷新", Data: CallbackShopRefresh},
+		{Text: "🔙 返回", Data: CallbackShopGoods},
+	})
+	
+	markup.InlineKeyboard = rows
+	return markup
+}
+
+// BuildDefenseItemsPanel creates the defense items panel
+func BuildDefenseItemsPanel() *tele.ReplyMarkup {
+	markup := &tele.ReplyMarkup{}
+	
+	// Get defense and passive items
+	defenseItems := GetItemsByCategory(CategoryDefense)
+	passiveItems := GetItemsByCategory(CategoryPassive)
+	items := append(defenseItems, passiveItems...)
+	
+	var rows [][]tele.InlineButton
+	
+	// Create a button for each item (2 per row)
+	var currentRow []tele.InlineButton
+	for i, item := range items {
+		btn := tele.InlineButton{
+			Text: fmt.Sprintf("%s %s (%d💰)", item.Emoji, item.Name, item.Price),
+			Data: CallbackShopItem + string(item.Type),
+		}
+		currentRow = append(currentRow, btn)
+		
+		if len(currentRow) == 2 || i == len(items)-1 {
+			rows = append(rows, currentRow)
+			currentRow = nil
+		}
+	}
+	
+	// Add back button
+	rows = append(rows, []tele.InlineButton{
+		{Text: "🔙 返回", Data: CallbackShopGoods},
 	})
 	
 	markup.InlineKeyboard = rows
@@ -55,22 +123,50 @@ func BuildShopPanel() *tele.ReplyMarkup {
 func BuildConfirmPanel(itemType ItemType) *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 	
+	// Determine which category to go back to
+	item, ok := GetItem(itemType)
+	backData := CallbackShopGoods
+	if ok {
+		if item.Category == CategoryAttack {
+			backData = CallbackShopAttack
+		} else {
+			backData = CallbackShopDefense
+		}
+	}
+	
 	markup.InlineKeyboard = [][]tele.InlineButton{
 		{
 			{Text: "✅ 购买", Data: CallbackShopBuy + string(itemType)},
-			{Text: "❌ 取消", Data: CallbackShopCancel},
+			{Text: "❌ 取消", Data: backData},
 		},
 	}
 	return markup
 }
 
-// FormatShopMessage creates the shop welcome message
-// Requirements: 1.1, 1.2 - Display all 8 items with name, price, use count, and description
+// FormatShopMessage creates the shop welcome message (main menu)
 func FormatShopMessage(balance int64) string {
 	msg := fmt.Sprintf("🏪 游戏商店\n💰 余额: %d 金币\n\n", balance)
+	msg += "欢迎来到游戏商店！\n"
+	msg += "请选择要查看的内容：\n\n"
+	msg += "🎒 背包 - 查看已购买的道具\n"
+	msg += "🛒 商品 - 浏览和购买道具"
+	return msg
+}
+
+// FormatGoodsCategoryMessage creates the goods category message
+func FormatGoodsCategoryMessage(balance int64) string {
+	msg := fmt.Sprintf("🛒 商品分类\n💰 余额: %d 金币\n\n", balance)
+	msg += "请选择道具类型：\n\n"
+	msg += "⚔️ 攻击道具 - 用于打劫的道具\n"
+	msg += "🛡️ 防御道具 - 用于防御的道具"
+	return msg
+}
+
+// FormatAttackItemsMessage creates the attack items list message
+func FormatAttackItemsMessage(balance int64) string {
+	msg := fmt.Sprintf("⚔️ 攻击道具\n💰 余额: %d 金币\n\n", balance)
 	
-	// List all items with details
-	items := GetAllItems()
+	items := GetItemsByCategory(CategoryAttack)
 	for _, item := range items {
 		msg += fmt.Sprintf("%s %s - %d💰\n", item.Emoji, item.Name, item.Price)
 		msg += fmt.Sprintf("   📦 %d次", item.UseCount)
@@ -80,7 +176,29 @@ func FormatShopMessage(balance int64) string {
 		msg += "\n"
 	}
 	
-	msg += "\n👇 点击按钮购买道具"
+	msg += "\n👇 点击按钮查看详情"
+	return msg
+}
+
+// FormatDefenseItemsMessage creates the defense items list message
+func FormatDefenseItemsMessage(balance int64) string {
+	msg := fmt.Sprintf("🛡️ 防御道具\n💰 余额: %d 金币\n\n", balance)
+	
+	// Get defense and passive items
+	defenseItems := GetItemsByCategory(CategoryDefense)
+	passiveItems := GetItemsByCategory(CategoryPassive)
+	items := append(defenseItems, passiveItems...)
+	
+	for _, item := range items {
+		msg += fmt.Sprintf("%s %s - %d💰\n", item.Emoji, item.Name, item.Price)
+		msg += fmt.Sprintf("   📦 %d次", item.UseCount)
+		if item.HasDailyLimit() {
+			msg += fmt.Sprintf(" | 🔒 限购%d/日", item.DailyLimit)
+		}
+		msg += "\n"
+	}
+	
+	msg += "\n👇 点击按钮查看详情"
 	return msg
 }
 
@@ -169,7 +287,7 @@ func BuildBagPanel() *tele.ReplyMarkup {
 	
 	markup.InlineKeyboard = [][]tele.InlineButton{
 		{
-			{Text: "🔙 返回商店", Data: CallbackShopCancel},
+			{Text: "🔙 返回", Data: CallbackShopHome},
 			{Text: "🔄 刷新", Data: CallbackShopBag},
 		},
 	}

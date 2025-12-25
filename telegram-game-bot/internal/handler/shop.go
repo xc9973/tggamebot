@@ -95,11 +95,55 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		data = strings.TrimPrefix(data, "\f")
 	}
 
+	// Handle home - back to main menu
+	if data == shop.CallbackShopHome {
+		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		caption := shop.FormatShopMessage(balance)
+		markup := shop.BuildShopPanel()
+		if err := h.editShopPhoto(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop photo")
+		}
+		return c.Respond()
+	}
+
 	// Handle refresh
 	if data == shop.CallbackShopRefresh {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
 		caption := shop.FormatShopMessage(balance)
 		markup := shop.BuildShopPanel()
+		if err := h.editShopPhoto(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop photo")
+		}
+		return c.Respond()
+	}
+
+	// Handle goods category view
+	if data == shop.CallbackShopGoods {
+		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		caption := shop.FormatGoodsCategoryMessage(balance)
+		markup := shop.BuildGoodsCategoryPanel()
+		if err := h.editShopPhoto(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop photo")
+		}
+		return c.Respond()
+	}
+
+	// Handle attack items view
+	if data == shop.CallbackShopAttack {
+		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		caption := shop.FormatAttackItemsMessage(balance)
+		markup := shop.BuildAttackItemsPanel()
+		if err := h.editShopPhoto(c, caption, markup); err != nil {
+			log.Error().Err(err).Msg("Failed to edit shop photo")
+		}
+		return c.Respond()
+	}
+
+	// Handle defense items view
+	if data == shop.CallbackShopDefense {
+		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
+		caption := shop.FormatDefenseItemsMessage(balance)
+		markup := shop.BuildDefenseItemsPanel()
 		if err := h.editShopPhoto(c, caption, markup); err != nil {
 			log.Error().Err(err).Msg("Failed to edit shop photo")
 		}
@@ -135,7 +179,7 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 		return c.Respond()
 	}
 
-	// Handle cancel - back to shop
+	// Handle cancel - back to shop (legacy, keep for compatibility)
 	if data == shop.CallbackShopCancel {
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
 		caption := shop.FormatShopMessage(balance)
@@ -207,15 +251,23 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 			})
 		}
 
-		// Success - show updated shop
+		// Success - go back to the category the item belongs to
 		c.Respond(&tele.CallbackResponse{
 			Text: "✅ 购买成功！" + item.Emoji + " " + item.Name,
 		})
 
 		balance, _ := h.accountService.GetBalance(ctx, sender.ID)
-		caption := shop.FormatShopMessage(balance)
-		markup := shop.BuildShopPanel()
-		h.editShopPhoto(c, caption, markup)
+		
+		// Return to the appropriate category
+		if item.Category == shop.CategoryAttack {
+			caption := shop.FormatAttackItemsMessage(balance)
+			markup := shop.BuildAttackItemsPanel()
+			h.editShopPhoto(c, caption, markup)
+		} else {
+			caption := shop.FormatDefenseItemsMessage(balance)
+			markup := shop.BuildDefenseItemsPanel()
+			h.editShopPhoto(c, caption, markup)
+		}
 		return nil
 	}
 

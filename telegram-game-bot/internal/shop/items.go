@@ -158,6 +158,17 @@ func GetItem(itemType ItemType) (ItemConfig, bool) {
 	return item, ok
 }
 
+// GetItemsByCategory returns all items of a specific category
+func GetItemsByCategory(category ItemCategory) []ItemConfig {
+	var items []ItemConfig
+	for _, item := range GetAllItems() {
+		if item.Category == category {
+			items = append(items, item)
+		}
+	}
+	return items
+}
+
 // HasDailyLimit returns true if the item has a daily purchase limit
 func (c ItemConfig) HasDailyLimit() bool {
 	return c.DailyLimit > 0
