@@ -1036,7 +1036,7 @@ func (h *GameHandler) HandleDajie(c tele.Context) error {
 		// Check for @mention in args
 		args := c.Args()
 		if len(args) < 1 {
-			return c.Reply("❌ 用法: /dajie (回复消息) 或 /dajie @用户名")
+			return c.Reply("❌ 用法: /dj (回复消息) 或 /dj @用户名")
 		}
 
 		// Parse @username
