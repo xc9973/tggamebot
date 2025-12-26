@@ -171,8 +171,14 @@ func (h *AllInHandler) HandleDuelCallback(c tele.Context) error {
 
 	// Parse callback data
 	data := callback.Data
+	// Telebot v3 may add a \f prefix to callback data
+	if strings.HasPrefix(data, "\f") {
+		data = strings.TrimPrefix(data, "\f")
+	}
+	
 	parts := strings.Split(data, "|")
 	if len(parts) < 2 {
+		log.Debug().Str("data", data).Msg("Invalid duel callback data")
 		return c.Respond(&tele.CallbackResponse{Text: "❌ 无效操作"})
 	}
 
@@ -181,6 +187,12 @@ func (h *AllInHandler) HandleDuelCallback(c tele.Context) error {
 
 	var targetID int64
 	fmt.Sscanf(targetIDStr, "%d", &targetID)
+
+	log.Debug().
+		Str("action", action).
+		Int64("targetID", targetID).
+		Int64("senderID", sender.ID).
+		Msg("Duel callback received")
 
 	// Check if sender is the target
 	if sender.ID != targetID {
