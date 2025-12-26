@@ -271,6 +271,9 @@ func (g *RobGame) CanRob(ctx context.Context, robberID, victimID int64) (bool, s
 		// Emperor Clothes immune ALL attacks including bypass defense items (blunt knife, great sword)
 		// Requirements: 9.4, 9.5 - Emperor clothes prevents ALL robbery attempts
 		if g.itemChecker.HasEmperorClothes(ctx, victimID) {
+			// Decrement emperor clothes use count
+			// Requirements: 9.6 - Decrement use count by 1 on each use
+			g.itemChecker.DecrementUseCountByString(ctx, victimID, "emperor_clothes")
 			return false, "👑 目标有皇帝的新衣，无法打劫"
 		}
 
@@ -293,6 +296,9 @@ func (g *RobGame) CanRob(ctx context.Context, robberID, victimID int64) (bool, s
 		// Check if victim has shield (can be bypassed by blunt knife/great sword)
 		// Requirements: 6.4, 7.5 - Blunt knife and great sword bypass shield
 		if g.itemChecker.HasShield(ctx, victimID) && !hasBypassDefense {
+			// Decrement shield use count
+			// Requirements: 3.7 - Decrement use count by 1 on each use
+			g.itemChecker.DecrementUseCountByString(ctx, victimID, "shield")
 			return false, "🛡️ 目标有保护罩，无法打劫"
 		}
 	}
@@ -519,6 +525,9 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 					thornGainDesc := fmt.Sprintf("荆棘刺甲反伤获得 %d 金币", thornDamage)
 					g.txRepo.Create(ctx, victimID, thornDamage, TxTypeRob, &thornGainDesc)
 					thornArmorTriggered = true
+					// Decrement thorn armor use count
+					// Requirements: 4.5 - Decrement use count by 1 on each use
+					g.itemChecker.DecrementUseCountByString(ctx, victimID, "thorn_armor")
 				}
 			}
 		}
@@ -533,6 +542,12 @@ func (g *RobGame) Rob(ctx context.Context, robberID, victimID int64, robberName,
 		// Requirements: 7.6 - Decrement use count by 1 on each use
 		if hasGreatSword && g.itemChecker != nil {
 			g.itemChecker.DecrementUseCountByString(ctx, robberID, "great_sword")
+		}
+
+		// Decrement bloodthirst sword use count after successful use
+		// Requirements: 5.5 - Decrement use count by 1 on each use
+		if hasBloodthirst && g.itemChecker != nil {
+			g.itemChecker.DecrementUseCountByString(ctx, robberID, "bloodthirst")
 		}
 
 		// Update victim's protection state
