@@ -36,9 +36,9 @@ const (
 	BluntKnifeMaxAmount = 100 // Maximum robbery amount with blunt knife
 	
 	// Great sword critical hit
-	// Requirements: 7.6 - Great sword has 0.01% chance to rob 90% of target's coins
-	GreatSwordCriticalChance = 1     // 0.01% = 1 in 10000
-	GreatSwordCriticalDenom  = 10000 // Denominator for critical chance calculation
+	// Requirements: 7.6 - Great sword has 1% chance to rob 90% of target's coins
+	GreatSwordCriticalChance = 1     // 1% = 1 in 100
+	GreatSwordCriticalDenom  = 100   // Denominator for critical chance calculation
 	GreatSwordCriticalPercent = 90   // Rob 90% of target's coins on critical hit
 )
 

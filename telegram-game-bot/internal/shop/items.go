@@ -113,7 +113,7 @@ var ShopItems = map[ItemType]ItemConfig{
 		Emoji:         "⚔️",
 		Price:         10000,
 		UseCount:      3,
-		Description:   "无视防御，0.01%打劫90%（3次）",
+		Description:   "无视防御，1%打劫90%（3次）",
 		Category:      CategoryAttack,
 		DailyLimit:    1,
 		BypassDefense: true,
