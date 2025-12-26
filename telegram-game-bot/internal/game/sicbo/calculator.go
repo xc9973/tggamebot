@@ -15,10 +15,22 @@ const (
 )
 
 const (
-	// FixedBetAmount is the fixed bet amount per button click
+	// FixedBetAmount is the default bet amount per button click
 	// Requirements: 5.3
 	FixedBetAmount int64 = 1000
+
+	// BetAmount100 is the 100 coin bet option
+	BetAmount100 int64 = 100
+	// BetAmount200 is the 200 coin bet option
+	BetAmount200 int64 = 200
+	// BetAmount300 is the 300 coin bet option
+	BetAmount300 int64 = 300
+	// BetAmount1000 is the 1000 coin bet option
+	BetAmount1000 int64 = 1000
 )
+
+// BetAmounts is the list of available bet amounts
+var BetAmounts = []int64{BetAmount100, BetAmount200, BetAmount300, BetAmount1000}
 
 // IsTriple checks if all three dice show the same value.
 // Requirements: 5.5

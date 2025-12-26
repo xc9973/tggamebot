@@ -63,6 +63,7 @@ type GameHandler struct {
 	trackedMessages []TrackedMessage
 	messagesMu      sync.Mutex
 	sicboPanels     sync.Map // map[int64]int - chatID -> panelMessageID
+	userBetAmounts  sync.Map // map[int64]int64 - userID -> selected bet amount
 }
 
 // NewGameHandler creates a new GameHandler.
@@ -184,8 +185,14 @@ func (h *GameHandler) setCooldown(userID int64, gameName string) {
 func (h *GameHandler) HandleDice(c tele.Context) error {
 	ctx := context.Background()
 	sender := c.Sender()
-	if sender == nil {
+	chat := c.Chat()
+	if sender == nil || chat == nil {
 		return nil
+	}
+
+	// 仅限群组使用
+	if chat.Type == tele.ChatPrivate {
+		return c.Reply("❌ 骰子游戏只能在群组中进行，请加入群组后使用")
 	}
 
 	// Parse bet amount
@@ -325,8 +332,14 @@ func (h *GameHandler) HandleDice(c tele.Context) error {
 func (h *GameHandler) HandleSlot(c tele.Context) error {
 	ctx := context.Background()
 	sender := c.Sender()
-	if sender == nil {
+	chat := c.Chat()
+	if sender == nil || chat == nil {
 		return nil
+	}
+
+	// 仅限群组使用
+	if chat.Type == tele.ChatPrivate {
+		return c.Reply("❌ 老虎机游戏只能在群组中进行，请加入群组后使用")
 	}
 
 	// Parse bet amount
@@ -809,6 +822,39 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 		})
 	}
 
+	// Handle amount selection
+	if action == "amount" {
+		var selectedAmount int64
+		if param == "allin" {
+			// 梭哈：获取用户当前余额
+			balance, err := h.accountService.GetBalance(ctx, sender.ID)
+			if err != nil {
+				return c.Respond(&tele.CallbackResponse{
+					Text:      "❌ 获取余额失败",
+					ShowAlert: true,
+				})
+			}
+			selectedAmount = balance
+			h.userBetAmounts.Store(sender.ID, selectedAmount)
+			return c.Respond(&tele.CallbackResponse{
+				Text: fmt.Sprintf("🔥 已选择梭哈！下注金额: %d 金币\n请点击押注按钮下注", selectedAmount),
+			})
+		} else {
+			// 固定金额选择
+			amount, err := strconv.ParseInt(param, 10, 64)
+			if err != nil {
+				return c.Respond(&tele.CallbackResponse{
+					Text: "❌ 无效金额",
+				})
+			}
+			selectedAmount = amount
+			h.userBetAmounts.Store(sender.ID, selectedAmount)
+			return c.Respond(&tele.CallbackResponse{
+				Text: fmt.Sprintf("💰 已选择下注金额: %d 金币\n请点击押注按钮下注", selectedAmount),
+			})
+		}
+	}
+
 	// Determine bet type
 	var betType string
 	switch action {
@@ -837,8 +883,21 @@ func (h *GameHandler) HandleSicBoCallback(c tele.Context) error {
 		})
 	}
 
+	// Get user's selected bet amount (default to 100 if not set)
+	betAmount := int64(100)
+	if storedAmount, ok := h.userBetAmounts.Load(sender.ID); ok {
+		betAmount = storedAmount.(int64)
+	}
+
+	// Validate bet amount
+	if betAmount <= 0 {
+		return c.Respond(&tele.CallbackResponse{
+			Text:      "❌ 请先选择下注金额",
+			ShowAlert: true,
+		})
+	}
+
 	// Check balance
-	betAmount := sicbo.FixedBetAmount
 	h.userLock.Lock(sender.ID)
 	balance, err := h.accountService.GetBalance(ctx, sender.ID)
 	if err != nil {
@@ -943,6 +1002,11 @@ func (h *GameHandler) HandleDajie(c tele.Context) error {
 
 	if sender == nil || chat == nil {
 		return nil
+	}
+
+	// 仅限群组使用
+	if chat.Type == tele.ChatPrivate {
+		return c.Reply("❌ 打劫游戏只能在群组中进行，请加入群组后使用")
 	}
 
 	// Get robber's username

@@ -278,9 +278,15 @@ func (h *ShopHandler) HandleShopCallback(c tele.Context) error {
 func (h *ShopHandler) HandleBag(c tele.Context) error {
 	ctx := context.Background()
 	sender := c.Sender()
+	chat := c.Chat()
 
-	if sender == nil {
+	if sender == nil || chat == nil {
 		return nil
+	}
+
+	// 仅限私聊使用
+	if chat.Type != tele.ChatPrivate {
+		return c.Reply("❌ 请私聊机器人查看背包")
 	}
 
 	balance, _ := h.accountService.GetBalance(ctx, sender.ID)
@@ -310,9 +316,15 @@ func (h *ShopHandler) HandleBag(c tele.Context) error {
 func (h *ShopHandler) HandleHandcuff(c tele.Context) error {
 	ctx := context.Background()
 	sender := c.Sender()
+	chat := c.Chat()
 
-	if sender == nil {
+	if sender == nil || chat == nil {
 		return nil
+	}
+
+	// 手铐需要在群组中使用（针对其他用户）
+	if chat.Type == tele.ChatPrivate {
+		return c.Reply("❌ 请在群组中回复目标用户的消息来使用手铐")
 	}
 
 	// Check if user has handcuffs (silent fail if not)
@@ -366,10 +378,14 @@ func (h *ShopHandler) HandleHandcuff(c tele.Context) error {
 func (h *ShopHandler) HandleKey(c tele.Context) error {
 	ctx := context.Background()
 	sender := c.Sender()
+	chat := c.Chat()
 
-	if sender == nil {
+	if sender == nil || chat == nil {
 		return nil
 	}
+
+	// 钥匙可以在群组或私聊中使用
+	// 不需要限制
 
 	// Check if user has key (silent fail if not)
 	if !h.shopService.HasKey(ctx, sender.ID) {

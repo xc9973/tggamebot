@@ -127,7 +127,27 @@ func (kb *KeyboardBuilder) BuildMainPanel() *tele.ReplyMarkup {
 func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
 	markup := &tele.ReplyMarkup{}
 
-	// Row 1: Big/Small [押大] [押小]
+	// Row 1: Bet amount selection [100] [200] [300] [梭哈]
+	amountRow := []tele.InlineButton{
+		{
+			Text: "💰100",
+			Data: EncodeCallback("amount", "100"),
+		},
+		{
+			Text: "💰200",
+			Data: EncodeCallback("amount", "200"),
+		},
+		{
+			Text: "💰300",
+			Data: EncodeCallback("amount", "300"),
+		},
+		{
+			Text: "🔥梭哈",
+			Data: EncodeCallback("amount", "allin"),
+		},
+	}
+
+	// Row 2: Big/Small [押大] [押小]
 	bigSmallRow := []tele.InlineButton{
 		{
 			Text: "押大",
@@ -139,7 +159,7 @@ func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
 		},
 	}
 
-	// Row 2: Single numbers [押1] [押2] [押3]
+	// Row 3: Single numbers [押1] [押2] [押3]
 	singleRow1 := []tele.InlineButton{
 		{
 			Text: "押1",
@@ -155,7 +175,7 @@ func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
 		},
 	}
 
-	// Row 3: Single numbers [押4] [押5] [押6]
+	// Row 4: Single numbers [押4] [押5] [押6]
 	singleRow2 := []tele.InlineButton{
 		{
 			Text: "押4",
@@ -171,7 +191,7 @@ func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
 		},
 	}
 
-	// Row 4: Early settle button [🎲 提前开奖]
+	// Row 5: Early settle button [🎲 提前开奖]
 	settleRow := []tele.InlineButton{
 		{
 			Text: "🎲 提前开奖",
@@ -180,6 +200,7 @@ func (kb *KeyboardBuilder) BuildMainPanelWithSettle() *tele.ReplyMarkup {
 	}
 
 	markup.InlineKeyboard = [][]tele.InlineButton{
+		amountRow,
 		bigSmallRow,
 		singleRow1,
 		singleRow2,
@@ -200,7 +221,8 @@ func FormatPanelMessage(remainingTime int, playerCount int, totalBetAmount int64
 	msg += "• 押单数: 1出现1次=1:1, 2次=2:1, 3次=3:1\n"
 	msg += "  (单数出现概率: 42.1%)\n"
 	msg += "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-	msg += fmt.Sprintf("💰 每次下注: %d 金币", FixedBetAmount)
+	msg += "💡 先选择金额，再点击押注按钮\n"
+	msg += "💰 可选: 100 | 200 | 300 | 梭哈"
 	return msg
 }
 
