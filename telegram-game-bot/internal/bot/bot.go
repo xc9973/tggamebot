@@ -13,6 +13,7 @@ import (
 
 	"telegram-game-bot/internal/config"
 	"telegram-game-bot/internal/game"
+	"telegram-game-bot/internal/game/allin"
 	"telegram-game-bot/internal/game/rob"
 	"telegram-game-bot/internal/game/sicbo"
 	"telegram-game-bot/internal/handler"
@@ -31,6 +32,7 @@ type Bot struct {
 	gameRegistry    *game.Registry
 	sicboGame       *sicbo.SicBoGame
 	robGame         *rob.RobGame
+	allInGame       *allin.AllInGame
 	userLock        *lock.UserLock
 
 	// Handlers
@@ -40,6 +42,7 @@ type Bot struct {
 	rankingHandler  *handler.RankingHandler
 	gameHandler     *handler.GameHandler
 	shopHandler     *handler.ShopHandler
+	allInHandler    *handler.AllInHandler
 }
 
 // Dependencies holds all the dependencies needed by the bot handlers.
@@ -52,6 +55,7 @@ type Dependencies struct {
 	GameRegistry    *game.Registry
 	SicBoGame       *sicbo.SicBoGame
 	RobGame         *rob.RobGame
+	AllInGame       *allin.AllInGame
 	UserLock        *lock.UserLock
 }
 
@@ -82,6 +86,7 @@ func New(deps *Dependencies) (*Bot, error) {
 		gameRegistry:    deps.GameRegistry,
 		sicboGame:       deps.SicBoGame,
 		robGame:         deps.RobGame,
+		allInGame:       deps.AllInGame,
 		userLock:        deps.UserLock,
 	}
 
@@ -92,6 +97,7 @@ func New(deps *Dependencies) (*Bot, error) {
 	b.rankingHandler = handler.NewRankingHandler(deps.RankingService)
 	b.gameHandler = handler.NewGameHandler(deps.Config, deps.AccountService, deps.GameRegistry, deps.SicBoGame, deps.RobGame, deps.UserLock)
 	b.shopHandler = handler.NewShopHandler(deps.ShopService, deps.AccountService)
+	b.allInHandler = handler.NewAllInHandler(deps.AccountService, deps.AllInGame, deps.UserLock)
 
 	// Register middleware
 	b.registerMiddleware()
@@ -146,6 +152,11 @@ func (b *Bot) registerHandlers() {
 	// Rob game handler
 	b.bot.Handle("/dj", b.gameHandler.HandleDajie)
 
+	// All-in game handlers
+	b.bot.Handle("/shdj", b.allInHandler.HandleAllInRob)
+	b.bot.Handle("/duijue", b.allInHandler.HandleDuel)
+	b.bot.Handle("/shdice", b.allInHandler.HandleAllInDice)
+
 	// Shop handlers
 	b.bot.Handle("/bag", b.shopHandler.HandleBag)
 	b.bot.Handle("/handcuff", b.shopHandler.HandleHandcuff)
@@ -185,6 +196,12 @@ func (b *Bot) handleCallback(c tele.Context) error {
 	if strings.HasPrefix(data, "shop_") {
 		log.Debug().Msg("Routing to shop handler")
 		return b.shopHandler.HandleShopCallback(c)
+	}
+
+	// Route duel callbacks
+	if strings.HasPrefix(data, "duel_") {
+		log.Debug().Msg("Routing to duel handler")
+		return b.allInHandler.HandleDuelCallback(c)
 	}
 
 	// Route sicbo callbacks

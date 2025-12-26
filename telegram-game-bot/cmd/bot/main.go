@@ -15,6 +15,7 @@ import (
 	"telegram-game-bot/internal/bot"
 	"telegram-game-bot/internal/config"
 	"telegram-game-bot/internal/game"
+	"telegram-game-bot/internal/game/allin"
 	"telegram-game-bot/internal/game/dice"
 	"telegram-game-bot/internal/game/rob"
 	"telegram-game-bot/internal/game/sicbo"
@@ -100,11 +101,15 @@ func main() {
 	// Initialize Rob game
 	robGame := rob.NewRobGame(userRepo, txRepo, userLock)
 
+	// Initialize All-In game
+	allInGame := allin.NewAllInGame(userRepo, txRepo, userLock)
+
 	// Initialize Shop service
 	shopService := service.NewShopService(userRepo, txRepo, inventoryRepo, userLock)
 
-	// Connect shop service to rob game for item effects
+	// Connect shop service to rob game and all-in game for item effects
 	robGame.SetItemChecker(shopService)
+	allInGame.SetItemChecker(shopService)
 
 	log.Info().
 		Int("game_count", gameRegistry.Count()).
@@ -121,6 +126,7 @@ func main() {
 		GameRegistry:    gameRegistry,
 		SicBoGame:       sicboGame,
 		RobGame:         robGame,
+		AllInGame:       allInGame,
 		UserLock:        userLock,
 	}
 
