@@ -12,6 +12,9 @@ import (
 	"telegram-game-bot/internal/shop"
 )
 
+// MaxItemTypes is the maximum number of different item types a user can hold
+const MaxItemTypes = 2
+
 // Shop service errors
 var (
 	ErrItemNotFound       = errors.New("道具不存在")
@@ -22,6 +25,7 @@ var (
 	ErrAlreadyLocked      = errors.New("目标已被锁定")
 	ErrNotLocked          = errors.New("你没有被锁定")
 	ErrDailyLimitReached  = errors.New("今日购买次数已达上限")
+	ErrMaxItemTypesReached = errors.New("最多只能持有2种道具")
 )
 
 // UserInventory represents a user's complete inventory
@@ -70,6 +74,24 @@ func (s *ShopService) PurchaseItem(ctx context.Context, userID int64, itemType s
 	// Lock user for balance operation
 	s.userLock.Lock(userID)
 	defer s.userLock.Unlock(userID)
+
+	// Check if user already has this item type
+	currentCount, err := s.inventoryRepo.GetUseCount(ctx, userID, string(itemType))
+	if err != nil {
+		return err
+	}
+
+	// If user doesn't have this item, check max item types limit
+	if currentCount == 0 {
+		// Get all items user currently has
+		items, err := s.inventoryRepo.GetAllItems(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if len(items) >= MaxItemTypes {
+			return ErrMaxItemTypesReached
+		}
+	}
 
 	// Check daily purchase limit if applicable
 	// Requirements: 2.3, 2.9, 3.3, 3.8, 7.3, 7.8, 12.3, 12.4
